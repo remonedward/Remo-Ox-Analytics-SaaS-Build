@@ -123,9 +123,11 @@ class AdminSettingsView(BaseView):
             )
 
         model_presets = {
-            "gemini/gemini-2.0-flash": "Google Gemini 2.0 Flash (موصى به - حديث ومنخفض التكلفة)" if is_ar else "Google Gemini 2.0 Flash (Recommended)",
-            "gemini/gemini-1.5-flash": "Google Gemini 1.5 Flash (سريع وخفيف)" if is_ar else "Google Gemini 1.5 Flash (Fast & lightweight)",
-            "gemini/gemini-1.5-pro": "Google Gemini 1.5 Pro (تحليل متقدم للمهام المعقدة)" if is_ar else "Google Gemini 1.5 Pro (Deep reasoning)",
+            "gemini/gemini-2.5-flash": "Google Gemini 2.5 Flash (موصى به للاستقرار والإنتاج - سريع ومخفض التكلفة)" if is_ar else "Google Gemini 2.5 Flash (Recommended - stable & fast)",
+            "gemini/gemini-3.7-flash": "Google Gemini 3.7 Flash (الأحدث - ذكاء فائق وبرمجة متقدمة)" if is_ar else "Google Gemini 3.7 Flash (Latest - high intelligence)",
+            "gemini/gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite (الأقل تكلفة وخفيف)" if is_ar else "Google Gemini 2.5 Flash-Lite (Ultra low cost)",
+            "gemini/gemini-2.5-pro": "Google Gemini 2.5 Pro (تحليل متقدم للمهام المعقدة)" if is_ar else "Google Gemini 2.5 Pro (Deep reasoning)",
+            "gemini/gemini-1.5-flash": "Google Gemini 1.5 Flash (سريع ومتوافق)" if is_ar else "Google Gemini 1.5 Flash (Fast fallback)",
             "openai/gpt-4o-mini": "OpenAI GPT-4o-mini (اقتصادي من OpenAI)" if is_ar else "OpenAI GPT-4o-mini",
             "openai/gpt-4o": "OpenAI GPT-4o (النموذج الرائد من OpenAI)" if is_ar else "OpenAI GPT-4o",
             "anthropic/claude-3-5-haiku-20241022": "Anthropic Claude 3.5 Haiku",
@@ -325,7 +327,8 @@ class AdminSettingsView(BaseView):
                 ],
                 "temperature": 0.1,
                 "max_tokens": 30,
-                "timeout": 15.0,
+                "timeout": 25.0,
+                "num_retries": 3,
             }
             if api_key:
                 kwargs["api_key"] = api_key
@@ -336,7 +339,22 @@ class AdminSettingsView(BaseView):
             reply = resp.choices[0].message.content or "جاهز"
             return {"success": True, "reply": reply.strip()}
         except Exception as exc:
-            return {"success": False, "error": str(exc)}
+            err_str = str(exc)
+            if "503" in err_str or "high demand" in err_str.lower() or "unavailable" in err_str.lower():
+                return {
+                    "success": False,
+                    "error": (
+                        "⚠️ خوادم جوجل لهذا النموذج تواجه ضغطاً وطلباً عالياً مؤقتاً (503 High Demand). "
+                        "هذا الضغط طبيعي ومؤقت ويزول عادة في ثوانٍ معدودة. أعد المحاولة بعد لحظات، "
+                        "أو يمكنك تعيين نموذج احتياطي مثل 'gemini/gemini-2.0-flash' ليعمل تلقائياً عند انشغال النموذج الأساسي."
+                        if self.language == "ar"
+                        else "⚠️ Google's servers for this model are experiencing temporary high demand (503). "
+                        "Spikes are usually short-lived. Please try again in a few moments, "
+                        "or configure a fallback model like 'gemini/gemini-2.0-flash'."
+                    ),
+                }
+            return {"success": False, "error": err_str}
+
 
     # -----------------------------------------------------------------------
     # Tab 2: Admin Security & Exclusivity

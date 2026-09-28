@@ -57,8 +57,8 @@ class Settings(BaseSettings):
 
     # ---- LLM (admin-only) ------------------------------------------------
     llm_model: str = Field(
-        default="gemini/gemini-2.0-flash",
-        description="LiteLLM model string, e.g. 'gemini/gemini-2.0-flash' (recommended), 'openai/gpt-4o-mini', etc.",
+        default="gemini/gemini-2.5-flash",
+        description="LiteLLM model string, e.g. 'gemini/gemini-2.5-flash' (recommended), 'gemini/gemini-3.7-flash', etc.",
     )
     llm_api_key: SecretStr = Field(
         default=SecretStr(""),

@@ -171,6 +171,7 @@ class LLMProvider:
                 "temperature": self.settings.llm_temperature,
                 "max_tokens": self.settings.llm_max_tokens,
                 "timeout": timeout,
+                "num_retries": 3,
             }
 
             if api_key:
