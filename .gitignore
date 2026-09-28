@@ -20,6 +20,8 @@ logs/
 *.xlsm
 *.csv
 sample_data/*.xlsx
+uv.lock
+
 
 
 
