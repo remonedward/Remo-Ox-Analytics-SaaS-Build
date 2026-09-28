@@ -220,6 +220,15 @@ class StorageBackend(ABC):
         """Retrieve plan tier limits."""
 
     @abstractmethod
+    def list_plans(self) -> list[PlanRecord]:
+        """Retrieve all configured plans."""
+
+    @abstractmethod
+    def save_plan(self, plan: PlanRecord) -> bool:
+        """Create or update a plan definition."""
+
+
+    @abstractmethod
     def record_usage(
         self,
         user_id: str,

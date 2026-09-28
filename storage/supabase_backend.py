@@ -381,6 +381,37 @@ class SupabaseBackend(StorageBackend):
             is_default=bool(r.get("is_default", False)),
         )
 
+    def list_plans(self) -> list[PlanRecord]:
+        client = self._get_active_client()
+        res = client.table("plans").select("*").execute()
+        return [
+            PlanRecord(
+                id=r["id"],
+                name=r["name"],
+                monthly_ai_messages=r["monthly_ai_messages"],
+                max_datasets=r["max_datasets"],
+                max_file_mb=r["max_file_mb"],
+                monthly_pdf_exports=r["monthly_pdf_exports"],
+                is_default=bool(r.get("is_default", False)),
+            )
+            for r in (res.data or [])
+        ]
+
+    def save_plan(self, plan: PlanRecord) -> bool:
+        client = self._get_active_client(require_admin=True)
+        payload = {
+            "id": plan.id,
+            "name": plan.name,
+            "monthly_ai_messages": plan.monthly_ai_messages,
+            "max_datasets": plan.max_datasets,
+            "max_file_mb": plan.max_file_mb,
+            "monthly_pdf_exports": plan.monthly_pdf_exports,
+            "is_default": plan.is_default,
+        }
+        res = client.table("plans").upsert(payload).execute()
+        return bool(res.data)
+
+
     def record_usage(
         self,
         user_id: str,

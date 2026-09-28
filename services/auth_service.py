@@ -108,3 +108,20 @@ class AuthService:
         """Update user password."""
         return self._backend.change_password(user_id, new_password)
 
+    def list_all_users(self) -> list[UserSession]:
+        """Fetch all registered users (admin-only)."""
+        return self._backend.list_all_users()
+
+    def update_user_plan(self, user_id: str, new_plan_id: str) -> bool:
+        """Assign or update a user's subscription plan tier (admin-only)."""
+        return self._backend.update_user_plan(user_id, new_plan_id)
+
+    def list_plans(self) -> list[PlanRecord]:
+        """List all subscription plans and tiers."""
+        return self._backend.list_plans()
+
+    def save_plan(self, plan: PlanRecord) -> bool:
+        """Create or update a subscription plan definition."""
+        return self._backend.save_plan(plan)
+
+

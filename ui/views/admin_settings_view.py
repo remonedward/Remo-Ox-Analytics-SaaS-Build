@@ -16,6 +16,7 @@ from core.config import Settings, get_settings, update_env_file
 from core.logging_setup import get_logger
 from services.auth_service import AuthService
 from services.dataset_service import DatasetService
+from storage.base import PlanRecord
 from ui.session import SessionManager
 from ui.views.base import BaseView
 
@@ -75,11 +76,14 @@ class AdminSettingsView(BaseView):
             else "Configure LLM providers, manage admin security, and export complete database backups."
         )
 
-        tab_llm, tab_admin, tab_db = st.tabs(
+        tab_llm, tab_users, tab_admin, tab_db = st.tabs(
             [
                 "🤖 مزود خدمة الذكاء الاصطناعي (LLM)"
                 if self.language == "ar"
                 else "🤖 LLM Provider",
+                "👥 سعات المستخدمين والتعاقدات"
+                if self.language == "ar"
+                else "👥 User Quotas & Contracts",
                 "👑 أمان وبيانات المشرف"
                 if self.language == "ar"
                 else "👑 Admin Credentials",
@@ -92,11 +96,15 @@ class AdminSettingsView(BaseView):
         with tab_llm:
             self._render_llm_tab()
 
+        with tab_users:
+            self._render_users_tab()
+
         with tab_admin:
             self._render_admin_tab()
 
         with tab_db:
             self._render_database_tab()
+
 
     # -----------------------------------------------------------------------
     # Tab 1: LLM Provider Configuration
@@ -355,9 +363,198 @@ class AdminSettingsView(BaseView):
                 }
             return {"success": False, "error": err_str}
 
+    # -----------------------------------------------------------------------
+    # Tab 2: User Capacities & Contract Management
+    # -----------------------------------------------------------------------
+
+    def _render_users_tab(self) -> None:
+        """Render client quota, plan management, and custom contract tier assignment."""
+        import pandas as pd
+        import streamlit as st
+
+        is_ar = self.language == "ar"
+
+        st.subheader("👥 " + ("إدارة سعات المستخدمين وعقود الاشتراك" if is_ar else "User Capacities & Contract Management"))
+
+        if is_ar:
+            st.info(
+                "💡 **التحكم في سعات العملاء:** يمكنك هنا تحديد وترقية سعة كل عميل مسجل وفقاً لتعاقده معك "
+                "(عدد رسائل الذكاء الاصطناعي الشهرية، عدد ملفات البيانات المسموح برفعها، أقصى حجم للملف، وتقارير PDF). "
+                "كما يمكنك إنشاء باقات تعاقدية خاصة وتجميد أو تنشيط الحسابات في أي وقت."
+            )
+        else:
+            st.info(
+                "💡 **Client Quota Control:** Configure and upgrade limits for each registered user based on their contract "
+                "(Monthly AI messages, allowed datasets, max upload MB, and PDF exports). "
+                "You can also create custom contractual tiers and activate/suspend user accounts."
+            )
+
+        all_users = self.auth_service.list_all_users()
+        all_plans = self.auth_service.list_plans()
+        plan_dict = {p.id: p for p in all_plans}
+
+        if not all_users:
+            st.warning("لا يوجد مستخدمون مسجلون حالياً." if is_ar else "No users registered yet.")
+            return
+
+        # Users overview table
+        st.markdown("### 📋 " + ("قائمة المستخدمين والحصص الحالية" if is_ar else "Registered Users & Current Tiers"))
+
+        user_rows = []
+        for u in all_users:
+            p = plan_dict.get(u.plan_id)
+            plan_name = p.name if p else u.plan_id
+            limit_ai = p.monthly_ai_messages if p else "N/A"
+            limit_ds = p.max_datasets if p else "N/A"
+            status_badge = "🟢 نشط" if u.is_active else "🔴 موقوف"
+            if not is_ar:
+                status_badge = "🟢 Active" if u.is_active else "🔴 Suspended"
+
+            user_rows.append({
+                ("البريد الإلكتروني" if is_ar else "Email"): u.email,
+                ("الرتبة" if is_ar else "Role"): "👑 مشرف" if u.is_admin else "👤 مستخدم",
+                ("الخطة الحالية" if is_ar else "Current Plan"): plan_name,
+                ("رسائل الذكاء/شهر" if is_ar else "AI Messages/mo"): limit_ai,
+                ("أقصى ملفات" if is_ar else "Max Datasets"): limit_ds,
+                ("الحالة" if is_ar else "Status"): status_badge,
+            })
+
+        st.dataframe(pd.DataFrame(user_rows), use_container_width=True, hide_index=True)
+
+        st.divider()
+
+        # Update specific user form
+        st.markdown("### ✏️ " + ("تعديل وتحديد سعة عميل معين" if is_ar else "Assign / Upgrade Client Capacity"))
+
+        col_u, col_p = st.columns([1, 1])
+        with col_u:
+            user_options = {u.id: f"{u.email} ({u.plan_id.upper()})" for u in all_users}
+            selected_uid = st.selectbox(
+                "اختر العميل" if is_ar else "Select Client",
+                options=list(user_options.keys()),
+                format_func=lambda uid: user_options.get(uid, uid),
+                key="admin_user_select",
+            )
+            target_user = next((u for u in all_users if u.id == selected_uid), all_users[0])
+
+        with col_p:
+            plan_options = {
+                p.id: f"{p.name} ({p.monthly_ai_messages} رسائل AI • {p.max_datasets} ملفات • {p.max_file_mb}MB)"
+                for p in all_plans
+            }
+            current_pid = target_user.plan_id if target_user.plan_id in plan_options else (all_plans[0].id if all_plans else "trial")
+            selected_pid = st.selectbox(
+                "اختر الخطة أو السعة المطلوبة" if is_ar else "Select Plan / Quota Tier",
+                options=list(plan_options.keys()),
+                index=list(plan_options.keys()).index(current_pid) if current_pid in plan_options else 0,
+                format_func=lambda pid: plan_options.get(pid, pid),
+                key="admin_plan_select",
+            )
+
+        col_act, col_btn = st.columns([1, 1])
+        with col_act:
+            is_active_input = st.checkbox(
+                "الحساب مفعل (إلغاء التحديد لتجميد الحساب)" if is_ar else "Account Active (Uncheck to suspend)",
+                value=target_user.is_active,
+                key=f"user_active_{target_user.id}",
+            )
+
+        with col_btn:
+            if st.button("💾 " + ("تحديث سعة واشتراك العميل" if is_ar else "Update Client Quota & Plan"), type="primary", use_container_width=True):
+                self.auth_service.update_user_plan(target_user.id, selected_pid)
+                self.auth_service.update_profile(target_user.id, {"is_active": is_active_input})
+                st.success(
+                    f"✅ تم تحديث سعة العميل `{target_user.email}` بنجاح!"
+                    if is_ar
+                    else f"✅ Quota for `{target_user.email}` updated successfully!"
+                )
+                st.rerun()
+
+        st.divider()
+
+        # Custom plan creation / editing
+        with st.expander("➕ " + ("إنشاء أو تعديل باقة تعاقدية مخصصة (Custom Plan Tier)" if is_ar else "Create or Edit Custom Contract Tier")):
+            st.caption(
+                "يمكنك إضافة سعة جديدة مخصصة بالكامل لعميل محدد (مثلاً باقة خاصة بـ 5000 رسالة و 50 ملف)."
+                if is_ar
+                else "Define custom quota limits tailored for a specific enterprise client."
+            )
+
+            col_p_id, col_p_name = st.columns([1, 1])
+            with col_p_id:
+                new_plan_id = st.text_input(
+                    "معرّف الباقة بالإنجليزية (Plan ID)" if is_ar else "Plan Identifier (ID)",
+                    placeholder="e.g. enterprise_500, vip_client, custom_tier",
+                    key="new_plan_id_input",
+                ).strip().lower()
+            with col_p_name:
+                new_plan_name = st.text_input(
+                    "اسم الباقة (Plan Name)" if is_ar else "Plan Name",
+                    placeholder="e.g. باقة المؤسسات الذهبية / Enterprise VIP",
+                    key="new_plan_name_input",
+                ).strip()
+
+            col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+            with col_c1:
+                p_ai = st.number_input(
+                    "رسائل الذكاء/شهر" if is_ar else "Monthly AI Messages",
+                    min_value=10,
+                    max_value=100000,
+                    value=500,
+                    step=50,
+                    key="new_p_ai",
+                )
+            with col_c2:
+                p_ds = st.number_input(
+                    "أقصى ملفات" if is_ar else "Max Datasets",
+                    min_value=1,
+                    max_value=500,
+                    value=10,
+                    step=1,
+                    key="new_p_ds",
+                )
+            with col_c3:
+                p_mb = st.number_input(
+                    "أقصى حجم للملف (MB)" if is_ar else "Max File MB",
+                    min_value=1,
+                    max_value=200,
+                    value=25,
+                    step=5,
+                    key="new_p_mb",
+                )
+            with col_c4:
+                p_pdf = st.number_input(
+                    "تقارير PDF/شهر" if is_ar else "PDF Exports/mo",
+                    min_value=1,
+                    max_value=1000,
+                    value=50,
+                    step=5,
+                    key="new_p_pdf",
+                )
+
+            if st.button("💾 " + ("حفظ وتفعيل هذه الباقة في النظام" if is_ar else "Save Plan Definition"), key="btn_save_custom_plan"):
+                if not new_plan_id or not new_plan_name:
+                    st.error("يرجى إدخال معرّف واسم الباقة." if is_ar else "Please enter plan ID and name.")
+                else:
+                    plan_obj = PlanRecord(
+                        id=new_plan_id,
+                        name=new_plan_name,
+                        monthly_ai_messages=int(p_ai),
+                        max_datasets=int(p_ds),
+                        max_file_mb=int(p_mb),
+                        monthly_pdf_exports=int(p_pdf),
+                        is_default=False,
+                    )
+                    self.auth_service.save_plan(plan_obj)
+                    st.success(
+                        f"✅ تم حفظ الباقة '{new_plan_name}' بنجاح! يمكنك الآن تعيينها لأي عميل."
+                        if is_ar
+                        else f"✅ Plan '{new_plan_name}' saved! You can now assign it to any client."
+                    )
+                    st.rerun()
 
     # -----------------------------------------------------------------------
-    # Tab 2: Admin Security & Exclusivity
+    # Tab 3: Admin Security & Exclusivity
     # -----------------------------------------------------------------------
 
     def _render_admin_tab(self) -> None:

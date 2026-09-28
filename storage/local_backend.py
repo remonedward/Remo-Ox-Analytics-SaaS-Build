@@ -621,6 +621,49 @@ class LocalBackend(StorageBackend):
                 is_default=bool(row["is_default"]),
             )
 
+    def list_plans(self) -> list[PlanRecord]:
+        with self._lock, self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM plans ORDER BY max_datasets ASC")
+            return [
+                PlanRecord(
+                    id=row["id"],
+                    name=row["name"],
+                    monthly_ai_messages=row["monthly_ai_messages"],
+                    max_datasets=row["max_datasets"],
+                    max_file_mb=row["max_file_mb"],
+                    monthly_pdf_exports=row["monthly_pdf_exports"],
+                    is_default=bool(row["is_default"]),
+                )
+                for row in cur.fetchall()
+            ]
+
+    def save_plan(self, plan: PlanRecord) -> bool:
+        with self._lock, self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO plans (id, name, monthly_ai_messages, max_datasets, max_file_mb, monthly_pdf_exports, is_default)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    monthly_ai_messages = excluded.monthly_ai_messages,
+                    max_datasets = excluded.max_datasets,
+                    max_file_mb = excluded.max_file_mb,
+                    monthly_pdf_exports = excluded.monthly_pdf_exports,
+                    is_default = excluded.is_default
+                """,
+                (
+                    plan.id,
+                    plan.name,
+                    plan.monthly_ai_messages,
+                    plan.max_datasets,
+                    plan.max_file_mb,
+                    plan.monthly_pdf_exports,
+                    1 if plan.is_default else 0,
+                ),
+            )
+            return True
+
+
     def record_usage(
         self,
         user_id: str,
