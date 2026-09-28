@@ -1,0 +1,22 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "SIM", "RUF"]
+ignore = [
+    "ANN401",  # Dynamically typed expressions (Any) allowed
+    "RUF001",  # Ambiguous unicode characters (normal for Arabic text/digits)
+    "RUF002",  # Ambiguous docstring characters
+    "RUF003",  # Ambiguous comment characters
+    "E501",    # Line length handled gracefully
+    "E402",    # Future import placement relative to docstring
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN", "S", "E501", "E402"]
+"sample_data/*" = ["ANN", "S", "E501", "B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=core --cov=analytics --cov=data --cov=ai --cov-report=term-missing --cov-fail-under=80"
