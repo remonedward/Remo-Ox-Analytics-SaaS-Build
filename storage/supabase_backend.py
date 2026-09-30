@@ -91,9 +91,24 @@ class SupabaseBackend(StorageBackend):
                 return False, None, "Registration failed. Please try again."
 
             user_id = str(res.user.id)
-            # The database trigger handle_new_user() creates the profile.
-            # We fetch or update the profile language preference.
             profile = self.get_profile(user_id)
+            if not profile:
+                # Fallback: create profile directly using admin_client if database trigger was blocked
+                role = "admin" if email_clean in self.settings.admin_emails_list else "user"
+                plan_id = "pro" if role == "admin" else "trial"
+                try:
+                    admin_client = self._get_active_client(require_admin=True)
+                    admin_client.table("profiles").upsert({
+                        "id": user_id,
+                        "email": email_clean,
+                        "role": role,
+                        "plan_id": plan_id,
+                        "language": language,
+                    }).execute()
+                    profile = self.get_profile(user_id)
+                except Exception as ex:
+                    logger.warning("Explicit profile creation after sign_up failed: %s", ex)
+
             if profile and profile.language != language:
                 self.update_profile(user_id, {"language": language})
                 profile.language = language
@@ -116,6 +131,23 @@ class SupabaseBackend(StorageBackend):
 
             user_id = str(res.user.id)
             profile = self.get_profile(user_id)
+            if not profile:
+                # If profile was missing, create it now via admin_client
+                role = "admin" if email_clean in self.settings.admin_emails_list else "user"
+                plan_id = "pro" if role == "admin" else "trial"
+                try:
+                    admin_client = self._get_active_client(require_admin=True)
+                    admin_client.table("profiles").upsert({
+                        "id": user_id,
+                        "email": email_clean,
+                        "role": role,
+                        "plan_id": plan_id,
+                        "language": self.settings.default_language,
+                    }).execute()
+                    profile = self.get_profile(user_id)
+                except Exception as ex:
+                    logger.warning("Auto-create profile during sign_in failed: %s", ex)
+
             if not profile:
                 return False, None, "Profile record not found."
             if not profile.is_active:
@@ -146,11 +178,25 @@ class SupabaseBackend(StorageBackend):
             if not res.data:
                 return None
             row = res.data[0]
+            email = row["email"].lower()
+            role = row.get("role", "user")
+            plan_id = row.get("plan_id", "trial")
+
+            # Auto-promote configured admin email
+            if email in self.settings.admin_emails_list and (role != "admin" or plan_id != "pro"):
+                role = "admin"
+                plan_id = "pro"
+                try:
+                    admin_client = self._get_active_client(require_admin=True)
+                    admin_client.table("profiles").update({"role": "admin", "plan_id": "pro"}).eq("id", user_id).execute()
+                except Exception as ex:
+                    logger.debug("Failed auto-promoting admin in DB: %s", ex)
+
             return UserSession(
                 id=str(row["id"]),
-                email=row["email"],
-                role=row.get("role", "user"),
-                plan_id=row.get("plan_id", "trial"),
+                email=email,
+                role=role,
+                plan_id=plan_id,
                 is_active=bool(row.get("is_active", True)),
                 language=row.get("language", "ar"),
                 consent_ai_at=row.get("consent_ai_at"),
