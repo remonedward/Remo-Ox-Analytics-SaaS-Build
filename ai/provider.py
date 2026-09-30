@@ -124,11 +124,17 @@ class LLMProvider:
         if not res.error:
             return res
 
-        # Check if fallback model is configured
+        # Check if fallback model is configured or if automatic fallback applies
         fallback_model = self.settings.llm_fallback_model.strip()
         fallback_key = self.settings.llm_fallback_api_key.get_secret_value().strip() or primary_key
 
-        if fallback_model:
+        # If user did not configure an explicit fallback, but the primary model is a Gemini 3 model,
+        # provide an intelligent automatic fallback to gemini/gemini-2.5-flash using the same Google key
+        if not fallback_model and ("gemini-3" in primary_model.lower() or "gemini/gemini-3" in primary_model.lower()):
+            fallback_model = "gemini/gemini-2.5-flash"
+            fallback_key = primary_key
+
+        if fallback_model and fallback_model != primary_model:
             logger.warning(
                 "Primary model %s failed (%s). Attempting fallback model %s",
                 primary_model,
@@ -168,11 +174,18 @@ class LLMProvider:
             kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": messages,
-                "temperature": self.settings.llm_temperature,
                 "max_tokens": self.settings.llm_max_tokens,
                 "timeout": timeout,
                 "num_retries": 3,
             }
+
+            # Gemini 3 series (e.g. gemini-3.7-flash) requires temperature = 1.0 (Google specification).
+            # Passing temperature < 1.0 causes infinite loops, degraded reasoning, and LiteLLM warnings.
+            # Passing temperature explicitly also triggers LiteLLM DeprecationWarning.
+            # Omission allows LiteLLM / Gemini to default to 1.0 cleanly with zero warnings.
+            is_gemini_3 = "gemini-3" in model.lower()
+            if not is_gemini_3:
+                kwargs["temperature"] = self.settings.llm_temperature
 
             if api_key:
                 kwargs["api_key"] = api_key

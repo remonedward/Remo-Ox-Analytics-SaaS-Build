@@ -146,6 +146,67 @@ def test_call_fallback_on_primary_failure(test_settings):
         assert res.model == "gemini/gemini-1.5-flash"
 
 
+def test_gemini_3_temperature_handling():
+    # Gemini 3 model should omit temperature to avoid LiteLLM warnings
+    g3_settings = Settings(
+        llm_model="gemini/gemini-3.7-flash",
+        llm_api_key=SecretStr("test-key"),
+        admin_emails="admin@example.com",
+    )
+    provider = LLMProvider(g3_settings)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Gemini 3 response"
+    mock_choice.message.tool_calls = None
+    mock_raw = MagicMock()
+    mock_raw.choices = [mock_choice]
+
+    with patch("litellm.completion", return_value=mock_raw) as mock_comp:
+        provider.call(messages=[{"role": "user", "content": "Hello"}])
+        call_kwargs = mock_comp.call_args.kwargs
+        assert "temperature" not in call_kwargs
+
+    # Non-Gemini 3 model should include configured temperature
+    non_g3_settings = Settings(
+        llm_model="openai/gpt-4o-mini",
+        llm_api_key=SecretStr("test-key"),
+        admin_emails="admin@example.com",
+    )
+    provider_non_g3 = LLMProvider(non_g3_settings)
+    with patch("litellm.completion", return_value=mock_raw) as mock_comp:
+        provider_non_g3.call(messages=[{"role": "user", "content": "Hello"}])
+        call_kwargs = mock_comp.call_args.kwargs
+        assert "temperature" in call_kwargs
+        assert call_kwargs["temperature"] == non_g3_settings.llm_temperature
+
+
+def test_gemini_3_automatic_fallback():
+    # If primary is Gemini 3 and fallback is empty, it automatically falls back to gemini-2.5-flash
+    g3_settings = Settings(
+        llm_model="gemini/gemini-3.7-flash",
+        llm_api_key=SecretStr("test-key"),
+        llm_fallback_model="",
+        admin_emails="admin@example.com",
+    )
+    provider = LLMProvider(g3_settings)
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = "Auto fallback response"
+    mock_choice.message.tool_calls = None
+    mock_raw = MagicMock()
+    mock_raw.choices = [mock_choice]
+
+    with patch(
+        "litellm.completion",
+        side_effect=[RuntimeError("503 Service Unavailable"), mock_raw],
+    ) as mock_comp:
+        res = provider.call(messages=[{"role": "user", "content": "Hello"}])
+        assert mock_comp.call_count == 2
+        # Second call used auto fallback model gemini/gemini-2.5-flash
+        assert res.model == "gemini/gemini-2.5-flash"
+        assert res.content == "Auto fallback response"
+
+
 # ---------------------------------------------------------------------------
 # 2. ToolExecutor Tests
 # ---------------------------------------------------------------------------

@@ -203,9 +203,14 @@ class AdminSettingsView(BaseView):
                     max_value=1.0,
                     value=float(self.settings.llm_temperature),
                     step=0.05,
-                    help="القيمة المنخفضة (0.2) موصى بها للحسابات والتقارير المالية الدقيقة."
-                    if is_ar
-                    else "Lower value (0.2) recommended for factual analytics.",
+                    help=(
+                        "القيمة المنخفضة (0.2) موصى بها للحسابات والتقارير المالية الدقيقة لمعظم النماذج. "
+                        "ملاحظة: نماذج Gemini 3 (مثل gemini-3.7-flash) تعتمد تلقائياً Temperature = 1.0 "
+                        "وفقاً لتعليمات Google الرسمية لتفادي الحلقات التكرارية وضمان كفاءة التفكير المنطقي."
+                        if is_ar
+                        else "Lower value (0.2) recommended for factual analytics. "
+                        "Note: Gemini 3 models (e.g. gemini-3.7-flash) automatically default to Temperature = 1.0 per Google guidelines."
+                    ),
                     key="admin_llm_temp",
                 )
             with col_tok:
@@ -234,7 +239,7 @@ class AdminSettingsView(BaseView):
                     if is_ar
                     else "Fallback Model (Optional)",
                     value=self.settings.llm_fallback_model or "",
-                    placeholder="e.g. groq/llama-3.1-8b-instant",
+                    placeholder="e.g. gemini/gemini-2.5-flash or groq/llama-3.1-8b-instant",
                     key="admin_llm_fb_model",
                 ).strip()
             with col_fb_k:
@@ -325,6 +330,8 @@ class AdminSettingsView(BaseView):
 
             litellm.suppress_debug_info = True
 
+            is_gemini_3 = "gemini-3" in model.lower()
+
             kwargs: dict[str, Any] = {
                 "model": model,
                 "messages": [
@@ -333,11 +340,14 @@ class AdminSettingsView(BaseView):
                         "content": "أهلاً، أجب بكلمة واحدة فقط لتأكيد الاتصال: جاهز",
                     }
                 ],
-                "temperature": 0.1,
                 "max_tokens": 30,
                 "timeout": 25.0,
                 "num_retries": 3,
             }
+            # Only pass temperature for non-Gemini 3 models to adhere to Google standards & silence warnings
+            if not is_gemini_3:
+                kwargs["temperature"] = 0.1
+
             if api_key:
                 kwargs["api_key"] = api_key
             if api_base:
@@ -352,13 +362,14 @@ class AdminSettingsView(BaseView):
                 return {
                     "success": False,
                     "error": (
-                        "⚠️ خوادم جوجل لهذا النموذج تواجه ضغطاً وطلباً عالياً مؤقتاً (503 High Demand). "
-                        "هذا الضغط طبيعي ومؤقت ويزول عادة في ثوانٍ معدودة. أعد المحاولة بعد لحظات، "
-                        "أو يمكنك تعيين نموذج احتياطي مثل 'gemini/gemini-2.0-flash' ليعمل تلقائياً عند انشغال النموذج الأساسي."
+                        "⚠️ خوادم جوجل لهذا النموذج تواجه ضغطاً وطلباً عالمياً عالياً مؤقتاً (503 High Demand). "
+                        "هذا الضغط طبيعي على نموذج Gemini 3.7 ويزول عادة خلال ثوانٍ معدودة. "
+                        "يمكنك إعادة المحاولة بعد لحظات، أو تعيين نموذج احتياطي (Fallback Model) مثل 'gemini/gemini-2.5-flash' "
+                        "وسيقوم النظام تلقائياً بالتحويل إليه عند انشغال النموذج الأساسي."
                         if self.language == "ar"
                         else "⚠️ Google's servers for this model are experiencing temporary high demand (503). "
-                        "Spikes are usually short-lived. Please try again in a few moments, "
-                        "or configure a fallback model like 'gemini/gemini-2.0-flash'."
+                        "Spikes are usually short-lived. Please try again shortly, "
+                        "or configure a fallback model like 'gemini/gemini-2.5-flash'."
                     ),
                 }
             return {"success": False, "error": err_str}
