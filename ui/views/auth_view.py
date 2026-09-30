@@ -79,8 +79,11 @@ class AuthView(BaseView):
                 with tab_signup:
                     self._render_signup_form()
 
-        except Exception:
-            pass
+        except Exception as exc:
+            import logging
+            import streamlit as st
+            logging.getLogger(__name__).error("AuthView render failed: %s", exc, exc_info=True)
+            st.error(f"Error loading authentication view: {exc}")
 
     def _render_login_form(self) -> None:
         """Render login form."""

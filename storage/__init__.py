@@ -40,7 +40,7 @@ def get_storage_backend(
     """
     global _CACHED_BACKEND
 
-    if not force_new and settings is None and _CACHED_BACKEND is not None:
+    if not force_new and _CACHED_BACKEND is not None:
         return _CACHED_BACKEND
 
     cfg = settings or get_settings()
@@ -61,9 +61,7 @@ def get_storage_backend(
             )
             backend = LocalBackend()
 
-    if settings is None:
-        _CACHED_BACKEND = backend
-
+    _CACHED_BACKEND = backend
     return backend
 
 

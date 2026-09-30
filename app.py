@@ -165,21 +165,6 @@ class Application:
 
     def run(self) -> None:
         """Execute main application loop."""
-        try:
-            import streamlit as st
-
-            # Configure Streamlit page layout
-            st.set_page_config(
-                page_title=self.settings.app_name,
-                page_icon="📊",
-                layout="wide",
-                initial_sidebar_state="expanded",
-            )
-        except Exception:
-            pass  # Outside of Streamlit runner
-
-        setup_logging()
-
         # Apply active theme & RTL stylesheet
         lang = self.session.get_language()
         self.theme.apply(lang)
@@ -194,7 +179,22 @@ class Application:
 
 def main() -> None:
     """Streamlit entry point."""
+    try:
+        import streamlit as st
+
+        # Streamlit requires set_page_config to be the very first Streamlit call
+        st.set_page_config(
+            page_title="REMO_OX Analytics",
+            page_icon="📊",
+            layout="wide",
+            initial_sidebar_state="expanded",
+        )
+    except Exception:
+        pass
+
+    setup_logging()
     app = Application()
+    logger.info("REMO_OX Analytics started successfully. UI is ready.")
     app.run()
 
 
