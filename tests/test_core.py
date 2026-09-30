@@ -85,3 +85,20 @@ def test_get_settings_cached() -> None:
     settings = get_settings()
     assert settings.app_name == "REMO_OX Analytics"
 
+
+def test_validate_supabase_url() -> None:
+    """Settings cleans malformed or dashboard URLs."""
+    s1 = Settings(
+        supabase_url="https://supabase.com/dashboard/project/rfaittlumqzyisonnecf",
+        supabase_anon_key=SecretStr("key"),
+        admin_emails="a@b.com",
+    )
+    assert s1.supabase_url == "https://rfaittlumqzyisonnecf.supabase.co"
+
+    s2 = Settings(
+        supabase_url="https://abc.supabase.co/rest/v1/",
+        supabase_anon_key=SecretStr("key"),
+        admin_emails="a@b.com",
+    )
+    assert s2.supabase_url == "https://abc.supabase.co"
+

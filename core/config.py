@@ -198,6 +198,32 @@ class Settings(BaseSettings):
             )
         return v.upper() if len(v) == 7 else v
 
+    @field_validator("supabase_url")
+    @classmethod
+    def validate_supabase_url(cls, v: str) -> str:
+        """Sanitize Supabase URL: strip whitespace, quotes, trailing slash, or auto-extract from dashboard link."""
+        import re
+
+        if not v:
+            return ""
+        val = str(v).strip().strip("'\"").rstrip("/")
+        # If user accidentally entered dashboard URL:
+        # e.g. https://supabase.com/dashboard/project/rfaittlumqzyisonnecf
+        match = re.search(r"supabase\.com/dashboard/project/([a-zA-Z0-9_-]+)", val)
+        if match:
+            project_ref = match.group(1)
+            val = f"https://{project_ref}.supabase.co"
+
+        # Remove any path suffix like /rest/v1 or /auth/v1
+        for suffix in ("/rest/v1", "/auth/v1"):
+            if val.endswith(suffix):
+                val = val[:-len(suffix)].rstrip("/")
+
+        if val and not val.startswith("http://") and not val.startswith("https://"):
+            val = f"https://{val}"
+
+        return val
+
     # ---- Computed properties ---------------------------------------------
 
     @property

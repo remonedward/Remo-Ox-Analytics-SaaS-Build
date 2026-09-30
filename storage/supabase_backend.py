@@ -39,9 +39,9 @@ class SupabaseBackend(StorageBackend):
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        url = settings.supabase_url
-        anon_key = settings.supabase_anon_key.get_secret_value()
-        service_key = settings.supabase_service_key.get_secret_value()
+        url = self._sanitize_supabase_url(settings.supabase_url)
+        anon_key = settings.supabase_anon_key.get_secret_value().strip().strip("'\"")
+        service_key = settings.supabase_service_key.get_secret_value().strip().strip("'\"")
 
         if not url or not anon_key:
             raise ValueError("SUPABASE_URL and SUPABASE_ANON_KEY must be provided.")
@@ -52,6 +52,27 @@ class SupabaseBackend(StorageBackend):
         self.admin_client: Client | None = (
             create_client(url, service_key) if service_key else None
         )
+
+    @staticmethod
+    def _sanitize_supabase_url(raw_url: str) -> str:
+        import re
+
+        if not raw_url:
+            return ""
+        val = str(raw_url).strip().strip("'\"").rstrip("/")
+        match = re.search(r"supabase\.com/dashboard/project/([a-zA-Z0-9_-]+)", val)
+        if match:
+            project_ref = match.group(1)
+            val = f"https://{project_ref}.supabase.co"
+
+        for suffix in ("/rest/v1", "/auth/v1"):
+            if val.endswith(suffix):
+                val = val[:-len(suffix)].rstrip("/")
+
+        if val and not val.startswith("http://") and not val.startswith("https://"):
+            val = f"https://{val}"
+
+        return val
 
     def _get_active_client(self, require_admin: bool = False) -> Client:
         if require_admin and self.admin_client:
@@ -80,7 +101,11 @@ class SupabaseBackend(StorageBackend):
             return True, profile or UserSession(id=user_id, email=email_clean, language=language), ""
         except Exception as exc:
             logger.warning("Supabase sign_up error: %s", exc)
-            return False, None, str(exc)
+            exc_str = str(exc)
+            if "User already registered" in exc_str:
+                err_msg = "هذا البريد الإلكتروني مسجل بالفعل. يرجى تسجيل الدخول." if self.settings.default_language == "ar" else "User already registered. Please sign in."
+                return False, None, err_msg
+            return False, None, exc_str
 
     def sign_in(self, email: str, password: str) -> tuple[bool, UserSession | None, str]:
         email_clean = email.strip().lower()
@@ -99,7 +124,14 @@ class SupabaseBackend(StorageBackend):
             return True, profile, ""
         except Exception as exc:
             logger.warning("Supabase sign_in error: %s", exc)
-            return False, None, "Invalid email or password."
+            exc_str = str(exc)
+            if "Email not confirmed" in exc_str:
+                err_msg = "يرجى تأكيد بريدك الإلكتروني من الرسالة المرسلة إليك أولاً (أو تعطيل تأكيد البريد من لوحة Supabase)." if self.settings.default_language == "ar" else "Please confirm your email address before signing in."
+                return False, None, err_msg
+            if "Invalid login credentials" in exc_str:
+                err_msg = "البريد الإلكتروني أو كلمة المرور غير صحيحة." if self.settings.default_language == "ar" else "Invalid email or password."
+                return False, None, err_msg
+            return False, None, exc_str
 
     def sign_out(self, session: UserSession) -> None:
         try:
