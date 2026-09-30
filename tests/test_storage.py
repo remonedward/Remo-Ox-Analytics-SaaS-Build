@@ -228,7 +228,7 @@ def test_token_usage_analytics_summary_and_events(temp_backend: LocalBackend) ->
 
     temp_backend.record_usage(user1.id, "ai_message", tokens_in=100, tokens_out=200, model="gemini-3.7-flash")
     temp_backend.record_usage(user1.id, "ai_message", tokens_in=50, tokens_out=150, model="gemini-3.7-flash")
-    temp_backend.record_usage(user2.id, "ai_message", tokens_in=80, tokens_out=120, model="gemini-2.5-flash")
+    temp_backend.record_usage(user2.id, "ai_message", tokens_in=80, tokens_out=120, model="gemini-3.8-flash")
 
     # Overall summary
     summary_all = temp_backend.get_users_token_summary()

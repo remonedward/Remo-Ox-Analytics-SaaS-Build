@@ -81,7 +81,9 @@ class AuthView(BaseView):
 
         except Exception as exc:
             import logging
+
             import streamlit as st
+
             logging.getLogger(__name__).error("AuthView render failed: %s", exc, exc_info=True)
             st.error(f"Error loading authentication view: {exc}")
 

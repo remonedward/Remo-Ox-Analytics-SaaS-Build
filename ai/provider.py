@@ -139,10 +139,13 @@ class LLMProvider:
         fallback_model = self.settings.llm_fallback_model.strip()
         fallback_key = self.settings.llm_fallback_api_key.get_secret_value().strip() or primary_key
 
-        # If user did not configure an explicit fallback, but the primary model is a Gemini 3 model,
-        # provide an intelligent automatic fallback to gemini/gemini-2.5-flash using the same Google key
-        if not fallback_model and ("gemini-3" in primary_model.lower() or "gemini/gemini-3" in primary_model.lower()):
-            fallback_model = "gemini/gemini-2.5-flash"
+        # If user did not configure an explicit fallback, provide an intelligent automatic fallback
+        # between current Gemini models (e.g. gemini-3.7-flash -> gemini-3.8-flash or vice versa)
+        if not fallback_model and "gemini" in primary_model.lower():
+            if "3.8" in primary_model:
+                fallback_model = "gemini/gemini-3.7-flash"
+            else:
+                fallback_model = "gemini/gemini-3.8-flash"
             fallback_key = primary_key
 
         if fallback_model and fallback_model != primary_model:

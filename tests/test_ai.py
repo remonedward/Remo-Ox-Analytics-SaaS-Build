@@ -181,7 +181,7 @@ def test_gemini_3_temperature_handling():
 
 
 def test_gemini_3_automatic_fallback():
-    # If primary is Gemini 3 and fallback is empty, it automatically falls back to gemini-2.5-flash
+    # If primary is Gemini 3.7 and fallback is empty, it automatically falls back to gemini-3.8-flash
     g3_settings = Settings(
         llm_model="gemini/gemini-3.7-flash",
         llm_api_key=SecretStr("test-key"),
@@ -202,8 +202,8 @@ def test_gemini_3_automatic_fallback():
     ) as mock_comp:
         res = provider.call(messages=[{"role": "user", "content": "Hello"}])
         assert mock_comp.call_count == 2
-        # Second call used auto fallback model gemini/gemini-2.5-flash
-        assert res.model == "gemini/gemini-2.5-flash"
+        # Second call used auto fallback model gemini/gemini-3.8-flash
+        assert res.model == "gemini/gemini-3.8-flash"
         assert res.content == "Auto fallback response"
 
 

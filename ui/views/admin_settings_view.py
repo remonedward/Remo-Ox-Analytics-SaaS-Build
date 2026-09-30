@@ -127,21 +127,19 @@ class AdminSettingsView(BaseView):
         # Info callout about Google Gemini recommendation
         if is_ar:
             st.info(
-                "💡 **النموذج الافتراضي الموصى به:** `Google Gemini 2.0 Flash` — أحدث نماذج جوجل، فائق السرعة، "
-                "ذو قدرات تحليلية متقدمة وبتكلفة منخفضة جداً. يمكنك أيضاً اختيار أي نموذج من OpenAI أو Anthropic أو Groq أو DeepSeek أو إدخال نموذج مخصص."
+                "💡 **النموذج الافتراضي الموصى به:** `Google Gemini 3.8 Flash` — أحدث نماذج جوجل الرائدة، فائق السرعة، "
+                "ذو قدرات تحليلية واستدلالية متقدمة وأعلى استقراراً ضد ضغط الطلب. يمكنك أيضاً اختيار Gemini 3.7 Flash أو نماذج OpenAI أو Anthropic أو Groq."
             )
         else:
             st.info(
-                "💡 **Recommended Default Model:** `Google Gemini 2.0 Flash` — ultra-fast, high intelligence, and lowest cost. "
-                "You can also use models from OpenAI, Anthropic, Groq, DeepSeek, Ollama, or enter any custom LiteLLM model identifier."
+                "💡 **Recommended Default Model:** `Google Gemini 3.8 Flash` — Google's latest flagship Flash model with high throughput and intelligence. "
+                "You can also use Gemini 3.7 Flash, or models from OpenAI, Anthropic, Groq, DeepSeek, or any custom LiteLLM identifier."
             )
 
         model_presets = {
-            "gemini/gemini-2.5-flash": "Google Gemini 2.5 Flash (موصى به للاستقرار والإنتاج - سريع ومخفض التكلفة)" if is_ar else "Google Gemini 2.5 Flash (Recommended - stable & fast)",
-            "gemini/gemini-3.7-flash": "Google Gemini 3.7 Flash (الأحدث - ذكاء فائق وبرمجة متقدمة)" if is_ar else "Google Gemini 3.7 Flash (Latest - high intelligence)",
-            "gemini/gemini-2.5-flash-lite": "Google Gemini 2.5 Flash-Lite (الأقل تكلفة وخفيف)" if is_ar else "Google Gemini 2.5 Flash-Lite (Ultra low cost)",
-            "gemini/gemini-2.5-pro": "Google Gemini 2.5 Pro (تحليل متقدم للمهام المعقدة)" if is_ar else "Google Gemini 2.5 Pro (Deep reasoning)",
-            "gemini/gemini-1.5-flash": "Google Gemini 1.5 Flash (سريع ومتوافق)" if is_ar else "Google Gemini 1.5 Flash (Fast fallback)",
+            "gemini/gemini-3.8-flash": "Google Gemini 3.8 Flash (النموذج الأحدث والموصى به من جوجل - الأسرع والأكثر استقراراً)" if is_ar else "Google Gemini 3.8 Flash (Recommended - latest, stable & fast)",
+            "gemini/gemini-3.7-flash": "Google Gemini 3.7 Flash (استدلال متقدم - قد يواجه ضغطاً أحياناً)" if is_ar else "Google Gemini 3.7 Flash (High reasoning - high demand)",
+            "gemini/gemini-3.5-flash-lite": "Google Gemini 3.5 Flash-Lite (خفيف وسريع جداً)" if is_ar else "Google Gemini 3.5 Flash-Lite (Ultra fast & low cost)",
             "openai/gpt-4o-mini": "OpenAI GPT-4o-mini (اقتصادي من OpenAI)" if is_ar else "OpenAI GPT-4o-mini",
             "openai/gpt-4o": "OpenAI GPT-4o (النموذج الرائد من OpenAI)" if is_ar else "OpenAI GPT-4o",
             "anthropic/claude-3-5-haiku-20241022": "Anthropic Claude 3.5 Haiku",
@@ -370,12 +368,12 @@ class AdminSettingsView(BaseView):
                     "error": (
                         "⚠️ خوادم جوجل لهذا النموذج تواجه ضغطاً وطلباً عالمياً عالياً مؤقتاً (503 High Demand). "
                         "هذا الضغط طبيعي على نموذج Gemini 3.7 ويزول عادة خلال ثوانٍ معدودة. "
-                        "يمكنك إعادة المحاولة بعد لحظات، أو تعيين نموذج احتياطي (Fallback Model) مثل 'gemini/gemini-2.5-flash' "
+                        "يمكنك إعادة المحاولة بعد لحظات، أو تعيين نموذج احتياطي (Fallback Model) مثل 'gemini/gemini-3.8-flash' "
                         "وسيقوم النظام تلقائياً بالتحويل إليه عند انشغال النموذج الأساسي."
                         if self.language == "ar"
                         else "⚠️ Google's servers for this model are experiencing temporary high demand (503). "
                         "Spikes are usually short-lived. Please try again shortly, "
-                        "or configure a fallback model like 'gemini/gemini-2.5-flash'."
+                        "or configure a fallback model like 'gemini/gemini-3.8-flash'."
                     ),
                 }
             return {"success": False, "error": err_str}
