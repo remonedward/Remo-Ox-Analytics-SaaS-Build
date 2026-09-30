@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS datasets (
     mapping         JSONB NOT NULL DEFAULT '{}',  -- {role: column_name}
     quality         JSONB NOT NULL DEFAULT '{}',  -- QualityReport snapshot
     dayfirst        BOOLEAN NOT NULL DEFAULT FALSE,
+    business_type   TEXT NOT NULL DEFAULT 'products',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at      TIMESTAMPTZ                   -- NULL = never (or now() + interval)
 );
