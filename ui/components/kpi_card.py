@@ -45,15 +45,20 @@ class KPICardComponent(BaseComponent):
         if self.delta is None:
             return ""
 
-        sign = "+" if self.delta > 0 else ""
-        delta_text = f"{sign}{self.delta:,.1f}% {self.delta_label}".strip()
+        if isinstance(self.delta, (int, float)):
+            sign = "+" if self.delta > 0 else ""
+            delta_text = f"{sign}{self.delta:,.1f}% {self.delta_label}".strip()
+            is_pos = self.delta >= 0
+        else:
+            delta_text = f"{self.delta} {self.delta_label}".strip()
+            is_pos = not str(self.delta).startswith("-")
 
         if self.is_good_delta is True:
             delta_class = "positive"
-            arrow = "▲" if self.delta >= 0 else "▼"
+            arrow = "▲" if is_pos else "▼"
         elif self.is_good_delta is False:
             delta_class = "negative"
-            arrow = "▼" if self.delta <= 0 else "▲"
+            arrow = "▼" if is_pos else "▲"
         else:
             delta_class = "neutral"
             arrow = "●"

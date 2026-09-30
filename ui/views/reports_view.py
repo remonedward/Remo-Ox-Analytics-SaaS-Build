@@ -136,14 +136,15 @@ class ReportsView(BaseView):
                 cols = st.columns(len(report_result.kpi_cards))
                 for idx, card in enumerate(report_result.kpi_cards):
                     with cols[idx]:
-                        card_title = card.label_ar if self.language == "ar" else card.label
+                        card_ar = getattr(card, "label_ar", None) or getattr(card, "label", "")
+                        card_title = card_ar if self.language == "ar" else getattr(card, "label", "")
                         KPICardComponent(
                             title=card_title,
-                            value=card.value,
-                            unit=card.unit,
-                            delta=card.delta,
-                            delta_label=card.delta_label,
-                            is_good_delta=card.is_good_delta,
+                            value=getattr(card, "value", ""),
+                            unit=getattr(card, "unit", ""),
+                            delta=getattr(card, "delta", None),
+                            delta_label=getattr(card, "delta_label", ""),
+                            is_good_delta=getattr(card, "is_good_delta", getattr(card, "delta_positive", None)),
                             language=self.language,
                         ).render()
 

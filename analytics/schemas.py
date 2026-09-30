@@ -527,21 +527,63 @@ ReportId = Literal[
 """Identifies one of the five built-in ready-made reports."""
 
 
+_KPI_ARABIC_LABELS: dict[str, str] = {
+    "total revenue": "إجمالي الإيرادات",
+    "avg monthly revenue": "متوسط الإيراد الشهري",
+    "total transactions": "إجمالي المعاملات",
+    "best month": "أفضل شهر",
+    "total skus": "إجمالي الأصناف",
+    "total services": "إجمالي الخدمات",
+    "top product": "المنتج الأكثر مبيعاً",
+    "top service": "الخدمة الأكثر طلباً",
+    "pareto 80/20 driver": "قاعدة باريتو (80/20)",
+    "overall gross margin": "هامش الربح الإجمالي",
+    "total slow items": "الأصناف الراكدة",
+    "slow items count": "الأصناف الراكدة",
+    "total slow stock value": "قيمة المخزون الراكد",
+    "total slow stock": "المخزون الراكد",
+    "total overdue": "إجمالي المتأخرات",
+    "total outstanding": "إجمالي المستحقات",
+    "overdue ratio": "نسبة المتأخرات",
+    "overdue invoices count": "الفواتير المتأخرة",
+    "total expenses": "إجمالي المصروفات",
+    "top category": "أعلى فئة مصروفات",
+    "total categories": "عدد الفئات",
+    "highest expense month": "أعلى شهر بالمصروفات",
+}
+
+
 class KPICard(BaseModel):
     """A single KPI card for display in the report UI.
 
     Attributes:
         label: Short human-readable label (e.g. 'Total Revenue').
-        value: Formatted value string (e.g. '£12,345').
-        delta: Optional delta / trend string (e.g. '+5.2%').
-        delta_positive: ``True`` if delta represents improvement (renders
-            green), ``False`` for deterioration (red), ``None`` for neutral.
+        value: Formatted value string or numeric value.
+        label_ar: Optional Arabic label translation.
+        unit: Optional unit string.
+        delta: Optional delta / trend string or float.
+        delta_label: Optional label for the delta.
+        delta_positive: ``True`` if delta represents improvement.
+        is_good_delta: Alias for delta_positive.
     """
 
     label: str
-    value: str
-    delta: str | None = None
+    value: Any
+    label_ar: str | None = None
+    unit: str = ""
+    delta: Any = None
+    delta_label: str = ""
     delta_positive: bool | None = None
+    is_good_delta: bool | None = None
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.is_good_delta is None and self.delta_positive is not None:
+            self.is_good_delta = self.delta_positive
+        elif self.delta_positive is None and self.is_good_delta is not None:
+            self.delta_positive = self.is_good_delta
+
+        if not self.label_ar:
+            self.label_ar = _KPI_ARABIC_LABELS.get(self.label.strip().lower(), self.label)
 
 
 class ReportResult(BaseModel):
