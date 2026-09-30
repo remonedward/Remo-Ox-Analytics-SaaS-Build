@@ -320,17 +320,22 @@ def top_products(
         total_profit = total_revenue - total_cost
         overall_margin = (total_profit / total_revenue * 100) if total_revenue > 0 else 0.0
 
+    is_svc = getattr(ctx, "is_services", False)
+    item_term = "Services" if is_svc else "Products"
+    unit_term = "Services" if is_svc else "SKUs"
+    single_item_term = "Service" if is_svc else "Product"
+
     kpis = [
-        KPICard(label="Total SKUs", value=f"{total_skus:,}"),
+        KPICard(label=f"Total {unit_term}", value=f"{total_skus:,}"),
         KPICard(
-            label="Top Product",
+            label=f"Top {single_item_term}",
             value=str(top_item[prod_col]) if top_item is not None else "N/A",
             delta=f"{top_item['share_of_total']:.1f}% of revenue" if top_item is not None else None,
             delta_positive=True,
         ),
         KPICard(
             label="Pareto 80/20 Driver",
-            value=f"{pareto_count} SKUs ({pareto_pct}%)",
+            value=f"{pareto_count} {unit_term} ({pareto_pct}%)",
             delta="Generate 80% of sales",
             delta_positive=True,
         ),
@@ -387,12 +392,16 @@ def top_products(
         ),
     )
 
+    is_svc = getattr(ctx, "is_services", False)
+    item_term = "Services" if is_svc else "Products"
+    unit_term = "Services" if is_svc else "SKUs"
+
     chart = MakeChartInput(
         chart_type="hbar",
         x_column="product",
         y_column="revenue",
-        title="Top 10 Products by Revenue",
-        x_label="Product",
+        title=f"Top 10 {item_term} by Revenue",
+        x_label="Service" if is_svc else "Product",
         y_label="Revenue",
     )
 
@@ -402,8 +411,8 @@ def top_products(
         tables={"top_products": table_result},
         charts=[chart],
         calculation_description=(
-            f"Ranked {total_skus} products by revenue. "
-            f"Pareto analysis showed {pareto_count} products ({pareto_pct}%) account for 80% of revenue."
+            f"Ranked {total_skus} {unit_term.lower()} by revenue. "
+            f"Pareto analysis showed {pareto_count} {unit_term.lower()} ({pareto_pct}%) account for 80% of revenue."
         ),
     )
 
@@ -427,6 +436,16 @@ def slow_inventory(
         last_movement_date: Date of last outbound activity
         unit_cost: Cost per unit to estimate tied-up capital
     """
+    if getattr(ctx, "is_services", False):
+        return ReportResult(
+            report_id="slow_inventory",
+            missing_roles=[],
+            calculation_description="غير منطبق: هذا التقرير مخصص لشركات بيع المنتجات والبضائع المخزنية فقط.",
+            warnings=[
+                "تم تصنيف هذا النشاط كشركة خدمية/استشارية. الأنشطة الخدمية لا تتضمن بضائع أو أرصدة مخزون راكدة."
+            ],
+        )
+
     sheet = sheet_name or ctx.first_sheet_name()
     prod_col = ctx.role_column("product")
     stock_col = ctx.role_column("stock_qty")

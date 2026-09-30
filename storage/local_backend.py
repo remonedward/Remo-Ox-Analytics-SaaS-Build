@@ -31,7 +31,9 @@ from storage.base import (
     MessageRecord,
     PlanRecord,
     StorageBackend,
+    TokenMessageLog,
     UserSession,
+    UserTokenUsage,
 )
 
 logger = get_logger(__name__)
@@ -131,6 +133,7 @@ class LocalBackend(StorageBackend):
                     mapping TEXT NOT NULL DEFAULT '{}',
                     quality TEXT NOT NULL DEFAULT '{}',
                     dayfirst BOOLEAN NOT NULL DEFAULT 0,
+                    business_type TEXT NOT NULL DEFAULT 'products',
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     expires_at TEXT
                 );
@@ -183,6 +186,15 @@ class LocalBackend(StorageBackend):
                 UPDATE profiles SET plan_id = 'pro' WHERE role = 'admin' AND plan_id != 'pro';
                 """
             )
+
+            # Ensure business_type column exists on pre-existing database files
+            try:
+                cur = conn.execute("PRAGMA table_info(datasets)")
+                col_names = [r["name"] for r in cur.fetchall()]
+                if "business_type" not in col_names:
+                    conn.execute("ALTER TABLE datasets ADD COLUMN business_type TEXT NOT NULL DEFAULT 'products'")
+            except Exception:
+                pass
 
     # -----------------------------------------------------------------------
     # Authentication & User Management
@@ -372,8 +384,8 @@ class LocalBackend(StorageBackend):
                 INSERT INTO datasets (
                     id, user_id, original_name, display_name, storage_path,
                     file_size_bytes, sheet_names, row_counts, mapping, quality,
-                    dayfirst, created_at, expires_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    dayfirst, business_type, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.id,
@@ -387,6 +399,7 @@ class LocalBackend(StorageBackend):
                     json.dumps(record.mapping),
                     json.dumps(record.quality),
                     1 if record.dayfirst else 0,
+                    getattr(record, "business_type", "products") or "products",
                     record.created_at or datetime.now(UTC).isoformat(),
                     record.expires_at,
                 ),
@@ -402,6 +415,7 @@ class LocalBackend(StorageBackend):
             row = cur.fetchone()
             if not row:
                 return None
+            keys = row.keys()
             return DatasetRecord(
                 id=row["id"],
                 user_id=row["user_id"],
@@ -414,6 +428,7 @@ class LocalBackend(StorageBackend):
                 mapping=json.loads(row["mapping"]),
                 quality=json.loads(row["quality"]),
                 dayfirst=bool(row["dayfirst"]),
+                business_type=row["business_type"] if "business_type" in keys else "products",
                 created_at=row["created_at"],
                 expires_at=row["expires_at"],
             )
@@ -426,6 +441,7 @@ class LocalBackend(StorageBackend):
             )
             results = []
             for row in cur.fetchall():
+                keys = row.keys()
                 results.append(
                     DatasetRecord(
                         id=row["id"],
@@ -439,6 +455,7 @@ class LocalBackend(StorageBackend):
                         mapping=json.loads(row["mapping"]),
                         quality=json.loads(row["quality"]),
                         dayfirst=bool(row["dayfirst"]),
+                        business_type=row["business_type"] if "business_type" in keys else "products",
                         created_at=row["created_at"],
                         expires_at=row["expires_at"],
                     )
@@ -448,7 +465,7 @@ class LocalBackend(StorageBackend):
     def update_dataset(self, dataset_id: str, user_id: str, updates: dict[str, Any]) -> bool:
         if not updates:
             return True
-        allowed_fields = {"display_name", "mapping", "quality", "dayfirst"}
+        allowed_fields = {"display_name", "mapping", "quality", "dayfirst", "business_type"}
         clauses = []
         params = []
         for k, v in updates.items():
@@ -800,3 +817,121 @@ class LocalBackend(StorageBackend):
                 size_bytes=len(raw_bytes),
                 created_at=now.isoformat(),
             )
+
+    def get_users_token_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+    ) -> list[UserTokenUsage]:
+        """Admin-only: aggregate token consumption per user within a date range."""
+        where_clauses = ["u.kind = 'ai_message'"]
+        params: list[Any] = []
+
+        if start_date:
+            where_clauses.append("u.created_at >= ?")
+            params.append(start_date if "T" in start_date else f"{start_date}T00:00:00")
+        if end_date:
+            where_clauses.append("u.created_at <= ?")
+            params.append(end_date if "T" in end_date else f"{end_date}T23:59:59")
+        if user_id:
+            where_clauses.append("u.user_id = ?")
+            params.append(user_id)
+
+        join_cond = " AND ".join(where_clauses)
+        user_filter = "WHERE p.id = ?" if user_id else ""
+        sql = f"""
+            SELECT
+                p.id AS user_id,
+                p.email,
+                p.plan_id,
+                COUNT(u.id) AS total_messages,
+                COALESCE(SUM(u.tokens_in), 0) AS tokens_in,
+                COALESCE(SUM(u.tokens_out), 0) AS tokens_out,
+                COALESCE(SUM(u.tokens_in + u.tokens_out), 0) AS total_tokens,
+                MAX(u.created_at) AS last_active
+            FROM profiles p
+            LEFT JOIN usage_events u ON p.id = u.user_id AND {join_cond}
+            {user_filter}
+            GROUP BY p.id, p.email, p.plan_id
+            ORDER BY total_tokens DESC, total_messages DESC
+        """
+        exec_params = [*params, user_id] if user_id else params
+
+        with self._lock, self._get_connection() as conn:
+            cur = conn.execute(sql, tuple(exec_params))
+            results = []
+            for row in cur.fetchall():
+                results.append(
+                    UserTokenUsage(
+                        user_id=row["user_id"],
+                        email=row["email"],
+                        plan_id=row["plan_id"],
+                        total_messages=row["total_messages"] or 0,
+                        tokens_in=row["tokens_in"] or 0,
+                        tokens_out=row["tokens_out"] or 0,
+                        total_tokens=row["total_tokens"] or 0,
+                        last_active=row["last_active"],
+                    )
+                )
+            return results
+
+    def get_token_usage_events(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+        limit: int = 200,
+    ) -> list[TokenMessageLog]:
+        """Admin-only: retrieve individual token usage events within a date range."""
+        where_clauses = ["u.kind = 'ai_message'"]
+        params: list[Any] = []
+
+        if start_date:
+            where_clauses.append("u.created_at >= ?")
+            params.append(start_date if "T" in start_date else f"{start_date}T00:00:00")
+        if end_date:
+            where_clauses.append("u.created_at <= ?")
+            params.append(end_date if "T" in end_date else f"{end_date}T23:59:59")
+        if user_id:
+            where_clauses.append("u.user_id = ?")
+            params.append(user_id)
+
+        where_sql = " AND ".join(where_clauses)
+        sql = f"""
+            SELECT
+                u.id,
+                u.user_id,
+                p.email,
+                u.kind,
+                COALESCE(u.tokens_in, 0) AS tokens_in,
+                COALESCE(u.tokens_out, 0) AS tokens_out,
+                COALESCE(u.tokens_in + u.tokens_out, 0) AS total_tokens,
+                u.model,
+                u.created_at
+            FROM usage_events u
+            JOIN profiles p ON u.user_id = p.id
+            WHERE {where_sql}
+            ORDER BY u.created_at DESC
+            LIMIT ?
+        """
+        params.append(limit)
+
+        with self._lock, self._get_connection() as conn:
+            cur = conn.execute(sql, tuple(params))
+            results = []
+            for row in cur.fetchall():
+                results.append(
+                    TokenMessageLog(
+                        id=row["id"],
+                        user_id=row["user_id"],
+                        email=row["email"],
+                        kind=row["kind"],
+                        tokens_in=row["tokens_in"] or 0,
+                        tokens_out=row["tokens_out"] or 0,
+                        total_tokens=row["total_tokens"] or 0,
+                        model=row["model"],
+                        created_at=row["created_at"],
+                    )
+                )
+            return results

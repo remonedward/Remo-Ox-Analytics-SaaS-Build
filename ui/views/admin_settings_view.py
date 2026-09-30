@@ -76,11 +76,14 @@ class AdminSettingsView(BaseView):
             else "Configure LLM providers, manage admin security, and export complete database backups."
         )
 
-        tab_llm, tab_users, tab_admin, tab_db = st.tabs(
+        tab_llm, tab_tokens, tab_users, tab_admin, tab_db = st.tabs(
             [
                 "🤖 مزود خدمة الذكاء الاصطناعي (LLM)"
                 if self.language == "ar"
                 else "🤖 LLM Provider",
+                "📊 استهلاك التوكنات والرسائل"
+                if self.language == "ar"
+                else "📊 Token Usage Analytics",
                 "👥 سعات المستخدمين والتعاقدات"
                 if self.language == "ar"
                 else "👥 User Quotas & Contracts",
@@ -95,6 +98,9 @@ class AdminSettingsView(BaseView):
 
         with tab_llm:
             self._render_llm_tab()
+
+        with tab_tokens:
+            self._render_tokens_tab()
 
         with tab_users:
             self._render_users_tab()
@@ -373,6 +379,148 @@ class AdminSettingsView(BaseView):
                     ),
                 }
             return {"success": False, "error": err_str}
+
+    # -----------------------------------------------------------------------
+    # Tab: Token & Message Consumption Analytics
+    # -----------------------------------------------------------------------
+
+    def _render_tokens_tab(self) -> None:
+        """Render token and message usage analytics per user and date range."""
+        from datetime import date
+
+        import pandas as pd
+        import streamlit as st
+
+        is_ar = self.language == "ar"
+
+        st.subheader("📊 " + ("تحليل واستهلاك التوكنات والرسائل الذكية" if is_ar else "Token & Message Usage Analytics"))
+
+        if is_ar:
+            st.info(
+                "💡 **مراقبة التوكنات وتكاليف الاستخدام:** يمكنك هنا تتبع استهلاك كل عميل ومستخدم للتوكنات "
+                "(Tokens In للمدخلات والأسئلة، Tokens Out للإجابات والمخرجات، وإجمالي التوكنات) "
+                "خلال أي فترة زمنية تحدد بدايتها ونهايتها، لحساب تكاليف الاستخدام بدقة ومحاسبة العملاء على السعات الإضافية."
+            )
+        else:
+            st.info(
+                "💡 **Token & Usage Cost Monitoring:** Track detailed token consumption "
+                "(Tokens In for prompts, Tokens Out for completions, and Total Tokens) "
+                "per user over any customizable date range to measure API utilization and invoice client usage."
+            )
+
+        # Filters: Start Date, End Date, User Selector
+        col_d1, col_d2, col_u = st.columns([2, 2, 3])
+        with col_d1:
+            default_start = date.today().replace(day=1)
+            start_d = st.date_input(
+                "📅 " + ("تاريخ البداية" if is_ar else "Start Date"),
+                value=default_start,
+                key="tokens_start_date",
+            )
+        with col_d2:
+            end_d = st.date_input(
+                "📅 " + ("تاريخ النهاية" if is_ar else "End Date"),
+                value=date.today(),
+                key="tokens_end_date",
+            )
+        with col_u:
+            all_users = self.auth_service.list_all_users()
+            user_options = {"all": "🌐 " + ("جميع المستخدمين" if is_ar else "All Users")}
+            for u in all_users:
+                user_options[u.id] = f"{u.email} ({u.plan_id})"
+
+            selected_u_id = st.selectbox(
+                "👤 " + ("تصفية حسب المستخدم" if is_ar else "Filter by User"),
+                options=list(user_options.keys()),
+                format_func=lambda uid: user_options.get(uid, uid),
+                key="tokens_user_filter",
+            )
+
+        start_str = start_d.strftime("%Y-%m-%d") if start_d else None
+        end_str = end_d.strftime("%Y-%m-%d") if end_d else None
+        filter_uid = selected_u_id if selected_u_id != "all" else None
+
+        # Fetch summaries and events
+        summary = self.auth_service.get_users_token_summary(
+            start_date=start_str,
+            end_date=end_str,
+            user_id=filter_uid,
+        )
+        events = self.auth_service.get_token_usage_events(
+            start_date=start_str,
+            end_date=end_str,
+            user_id=filter_uid,
+            limit=500,
+        )
+
+        # Global KPI Summary
+        total_tokens = sum(s.total_tokens for s in summary)
+        total_in = sum(s.tokens_in for s in summary)
+        total_out = sum(s.tokens_out for s in summary)
+        total_msgs = sum(s.total_messages for s in summary)
+        active_users_count = sum(1 for s in summary if s.total_messages > 0)
+
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("🔢 " + ("إجمالي التوكنات" if is_ar else "Total Tokens"), f"{total_tokens:,}")
+        with m2:
+            st.metric("📥 " + ("توكنات المدخلات (In)" if is_ar else "Prompt Tokens (In)"), f"{total_in:,}")
+        with m3:
+            st.metric("📤 " + ("توكنات المخرجات (Out)" if is_ar else "Completion Tokens (Out)"), f"{total_out:,}")
+        with m4:
+            st.metric(
+                "💬 " + ("إجمالي الرسائل" if is_ar else "Total Messages"),
+                f"{total_msgs:,}",
+                delta=f"{active_users_count} {'مستخدمين نشطين' if is_ar else 'active users'}",
+            )
+
+        st.divider()
+
+        # User breakdown table
+        st.markdown("### 👥 " + ("استهلاك كل مستخدم بالتفصيل" if is_ar else "User-by-User Token Breakdown"))
+        if not summary:
+            st.info("لا توجد بيانات استهلاك مسجلة خلال هذه الفترة." if is_ar else "No usage records found for this period.")
+        else:
+            rows = []
+            for s in summary:
+                rows.append({
+                    "البريد الإلكتروني" if is_ar else "Email": s.email,
+                    "الباقة" if is_ar else "Plan": s.plan_id,
+                    "عدد الرسائل" if is_ar else "Messages": s.total_messages,
+                    "مدخلات (In)" if is_ar else "Tokens In": f"{s.tokens_in:,}",
+                    "مخرجات (Out)" if is_ar else "Tokens Out": f"{s.tokens_out:,}",
+                    "إجمالي التوكنات" if is_ar else "Total Tokens": f"{s.total_tokens:,}",
+                    "آخر نشاط" if is_ar else "Last Active": s.last_active or "-",
+                })
+            df_summary = pd.DataFrame(rows)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+
+        # Per-message detailed log and CSV download
+        with st.expander("📝 " + ("سجل كل رسالة على حدة وتصدير التقرير (Detailed Message Log & CSV)" if is_ar else "Detailed Per-Message Log & CSV Export")):
+            if not events:
+                st.info("لا توجد رسائل مسجلة خلال الفترة المحددة." if is_ar else "No message events found.")
+            else:
+                ev_rows = []
+                for ev in events:
+                    ev_rows.append({
+                        "التاريخ والوقت" if is_ar else "Timestamp": ev.created_at,
+                        "البريد الإلكتروني" if is_ar else "Email": ev.email,
+                        "النموذج" if is_ar else "Model": ev.model or "-",
+                        "توكنات المدخلات" if is_ar else "Tokens In": ev.tokens_in,
+                        "توكنات المخرجات" if is_ar else "Tokens Out": ev.tokens_out,
+                        "إجمالي التوكنات" if is_ar else "Total Tokens": ev.total_tokens,
+                    })
+                df_events = pd.DataFrame(ev_rows)
+                st.dataframe(df_events, use_container_width=True, hide_index=True)
+
+                csv_data = df_events.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    label="📥 " + ("تصدير سجل الرسائل إلى CSV" if is_ar else "Export Message Logs to CSV"),
+                    data=csv_data,
+                    file_name=f"token_usage_{start_str}_to_{end_str}.csv",
+                    mime="text/csv",
+                    key="btn_export_tokens_csv",
+                )
 
     # -----------------------------------------------------------------------
     # Tab 2: User Capacities & Contract Management

@@ -37,13 +37,30 @@ class UploadView(BaseView):
             )
             st.caption(f"🔒 {quota_msg}")
 
-            # Date format parsing option
-            dayfirst = st.checkbox(
-                "التواريخ مكتوبة بصيغة يوم/شهر/سنة (DD/MM/YYYY)"
-                if self.language == "ar"
-                else "Dates are in DD/MM/YYYY format",
-                value=False,
-            )
+            # Upload options: Business model & Date parsing
+            col_opt1, col_opt2 = st.columns([1, 1])
+            with col_opt1:
+                biz_options = {
+                    "products": "🛍️ بيع منتجات وبضائع (مبيعات ومخزون)" if self.language == "ar" else "🛍️ Products & Inventory",
+                    "services": "💼 خدمات واستشارات (أتعاب وساعات عمل)" if self.language == "ar" else "💼 Services & Consulting",
+                }
+                selected_biz = st.radio(
+                    "نوع نشاط الشركة / Business Model" if self.language == "ar" else "Company Business Model",
+                    options=list(biz_options.keys()),
+                    format_func=lambda x: biz_options[x],
+                    horizontal=True,
+                    key="upload_biz_type",
+                )
+            with col_opt2:
+                dayfirst = st.checkbox(
+                    "التواريخ مكتوبة بصيغة يوم/شهر/سنة (DD/MM/YYYY)"
+                    if self.language == "ar"
+                    else "Dates are in DD/MM/YYYY format",
+                    value=False,
+                    help="تفعيل هذا الخيار إذا كان تاريخ مثل 05/01/2024 يعني 5 يناير وليس 1 مايو."
+                    if self.language == "ar"
+                    else "Enable if 05/01/2024 represents 5th of January.",
+                )
 
             # Dropzone
             uploaded_file = st.file_uploader(
@@ -84,6 +101,7 @@ class UploadView(BaseView):
                             filename=filename,
                             file_bytes=file_bytes,
                             dayfirst=dayfirst,
+                            business_type=selected_biz,
                         )
 
                     if ok and record:
@@ -106,6 +124,7 @@ class UploadView(BaseView):
                             filename=filename,
                             file_bytes=file_bytes,
                             dayfirst=dayfirst,
+                            business_type=selected_biz,
                         )
 
                     if ok and record:

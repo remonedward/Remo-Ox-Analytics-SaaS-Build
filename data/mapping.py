@@ -48,36 +48,51 @@ ROLE_SYNONYMS: dict[str, list[str]] = {
         "product", "item", "منتج", "المنتج", "صنف", "الصنف", "البضاعة",
         "اسم الصنف", "اسم المنتج", "product name", "item name", "description",
         "الوصف", "بضاعة", "سلعة",
+        # Services & Consulting synonyms
+        "خدمة", "الخدمة", "اسم الخدمة", "نوع الخدمة", "الاستشارة", "نوع الاستشارة",
+        "المهمة", "المشروع", "الباقة", "service", "services", "service name",
+        "consultation", "job", "task", "project", "package",
     ],
     "category": [
         "category", "فئة", "الفئة", "تصنيف", "التصنيف", "نوع", "النوع",
         "قسم", "القسم", "group", "type", "class",
+        "نوع الخدمة", "قسم الخدمات", "service category", "service type",
     ],
     "customer": [
         "customer", "client", "عميل", "العميل", "زبون", "الزبون",
         "اسم العميل", "customer name", "account", "buyer",
+        "متلقي الخدمة", "الجهة المستفيدة", "client name",
     ],
     "quantity": [
         "quantity", "qty", "كمية", "الكمية", "عدد", "العدد",
         "pieces", "units", "وحدات", "الوحدات",
+        # Services: hours / sessions / counts
+        "ساعات", "الساعات", "ساعات العمل", "عدد الساعات", "الجلسات",
+        "عدد الجلسات", "عدد المرات", "hours", "billable hours", "sessions", "times",
     ],
     "unit_price": [
         "unit price", "price", "سعر", "السعر", "سعر الوحدة",
         "unit cost", "price per unit", "سعر البيع", "selling price",
+        # Services: rate / fee
+        "سعر الخدمة", "أجر الساعة", "أتعاب الخدمة", "hourly rate", "fee", "rate", "service fee",
     ],
     "revenue": [
         "revenue", "sales", "amount", "total", "إيراد", "الإيراد", "إيرادات", "الإيرادات",
         "مبيعات", "المبيعات", "الإجمالي", "إجمالي الإيرادات", "إجمالي المبيعات",
         "اجمالي الايرادات", "اجمالي المبيعات", "قيمة المبيعات", "المبلغ",
         "income", "turnover", "proceeds",
+        # Services: fees / service revenue
+        "إيراد الخدمات", "ايراد الخدمات", "إيرادات الخدمات", "ايرادات الخدمات",
+        "أتعاب", "الأتعاب", "أتعاب الاستشارة", "قيمة الخدمة", "رسوم", "الرسوم",
+        "fees", "service revenue", "consulting revenue",
     ],
     "unit_cost": [
         "unit cost", "cost per unit", "تكلفة الوحدة", "تكلفة", "التكلفة",
-        "cost price", "purchase price", "cogs",
+        "cost price", "purchase price", "cogs", "تكلفة الخدمة",
     ],
     "cost": [
         "cost", "costs", "total cost", "تكلفة", "التكلفة", "إجمالي التكلفة",
-        "تكلفة المبيعات", "cogs", "cost of goods sold",
+        "تكلفة المبيعات", "cogs", "cost of goods sold", "تكلفة تقديم الخدمة",
     ],
     "expense_amount": [
         "expense", "expenses", "مصروف", "المصروف", "مصاريف", "المصاريف",

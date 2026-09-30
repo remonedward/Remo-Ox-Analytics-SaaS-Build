@@ -115,7 +115,13 @@ class AIOrchestrator:
 
         # 5. Build conversation message history
         sheet_names = list(ctx.sheets.keys())
-        system_content = self.provider.build_system_prompt(sheet_names, ctx.mapping, language=language)
+        biz_type = getattr(ctx, "business_type", "products")
+        system_content = self.provider.build_system_prompt(
+            sheet_names,
+            ctx.mapping,
+            language=language,
+            business_type=biz_type,
+        )
 
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_content},
@@ -135,11 +141,19 @@ class AIOrchestrator:
         collected_calc_notes: list[str] = []
         collected_tool_calls: list[dict[str, Any]] = []
 
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        last_model = self.settings.llm_model
+
         final_text = ""
         max_tool_iterations = 5
 
         for _ in range(max_tool_iterations):
             resp = self.provider.call(messages=messages, tools=ANALYTICS_TOOLS)
+            total_prompt_tokens += getattr(resp, "prompt_tokens", 0) or 0
+            total_completion_tokens += getattr(resp, "completion_tokens", 0) or 0
+            if resp.model:
+                last_model = resp.model
 
             if resp.error:
                 logger.warning("AI provider error during chat: %s", resp.error)
@@ -196,17 +210,25 @@ class AIOrchestrator:
                 else "The requested calculations and analytics have been successfully computed from your data."
             )
 
-        # 7. Record quota usage & compute remaining
-        self.backend.record_usage(user_id, "ai_message")
+        # 7. Record quota usage & token metering in database
+        self.backend.record_usage(
+            user_id=user_id,
+            kind="ai_message",
+            tokens_in=total_prompt_tokens,
+            tokens_out=total_completion_tokens,
+            model=last_model,
+        )
         remaining = max(0, limit - (used + 1))
 
-        # 8. Persist messages in database
+        # 8. Persist messages with tokens_in & tokens_out in database
         self.backend.add_message(conversation_id=conv_id, role="user", content=sanitized_prompt)
         self.backend.add_message(
             conversation_id=conv_id,
             role="assistant",
             content=final_text,
             tool_trace=collected_tool_calls if collected_tool_calls else None,
+            tokens_in=total_prompt_tokens,
+            tokens_out=total_completion_tokens,
         )
 
         return AIOrchestrationResult(

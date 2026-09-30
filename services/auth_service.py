@@ -10,7 +10,14 @@ from typing import Any
 
 from core.config import Settings
 from core.logging_setup import get_logger
-from storage.base import DatabaseDump, PlanRecord, StorageBackend, UserSession
+from storage.base import (
+    DatabaseDump,
+    PlanRecord,
+    StorageBackend,
+    TokenMessageLog,
+    UserSession,
+    UserTokenUsage,
+)
 
 logger = get_logger(__name__)
 
@@ -123,5 +130,24 @@ class AuthService:
     def save_plan(self, plan: PlanRecord) -> bool:
         """Create or update a subscription plan definition."""
         return self._backend.save_plan(plan)
+
+    def get_users_token_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+    ) -> list[UserTokenUsage]:
+        """Fetch aggregated token consumption per user within a date range (admin-only)."""
+        return self._backend.get_users_token_summary(start_date=start_date, end_date=end_date, user_id=user_id)
+
+    def get_token_usage_events(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+        limit: int = 200,
+    ) -> list[TokenMessageLog]:
+        """Fetch individual token usage log records within a date range (admin-only)."""
+        return self._backend.get_token_usage_events(start_date=start_date, end_date=end_date, user_id=user_id, limit=limit)
 
 

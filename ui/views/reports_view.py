@@ -81,21 +81,44 @@ class ReportsView(BaseView):
 
             # Header
             col_t, col_rep = st.columns([2, 3])
+            is_svc = getattr(ctx, "is_services", False)
+            biz_badge = "💼 شركة خدمات واستشارات" if (self.language == "ar" and is_svc) else ("🛍️ شركة تجارية ومنتجات" if self.language == "ar" else ("💼 Services" if is_svc else "🛍️ Products"))
+
             with col_t:
                 st.title(f"📑 {self.get_title()}")
-                st.caption(f"الملف: {dataset.display_name}")
+                st.caption(f"الملف: **{dataset.display_name}** | {biz_badge}")
 
             with col_rep:
+                def _format_rep_name(rid: str) -> str:
+                    if is_svc:
+                        if rid == "sales_overview":
+                            return "📈 نظرة عامة على إيرادات الخدمات" if self.language == "ar" else "📈 Service Revenue Overview"
+                        if rid == "top_products":
+                            return "🏆 أعلى الخدمات طلباً وإيراداً" if self.language == "ar" else "🏆 Top Services by Revenue"
+                        if rid == "slow_inventory":
+                            return "📦 المخزون (غير منطبق للخدمات)" if self.language == "ar" else "📦 Inventory (N/A for Services)"
+                    return next(f"{r[2]} {t(r[1], lang=self.language)}" for r in REPORT_DEFINITIONS if r[0] == rid)
+
                 # Report Selector
                 selected_report_id = st.selectbox(
                     label="Select Report",
                     options=[r[0] for r in REPORT_DEFINITIONS],
-                    format_func=lambda rid: next(f"{r[2]} {t(r[1], lang=self.language)}" for r in REPORT_DEFINITIONS if r[0] == rid),
+                    format_func=_format_rep_name,
                     label_visibility="collapsed",
                     key="report_selector",
                 )
 
             st.divider()
+
+            if is_svc and selected_report_id == "slow_inventory":
+                st.info(
+                    "💡 **ملاحظة:** تم تحديد هذا الملف كنشاط خدمي/استشاري. "
+                    "الشركات الخدمية لا تمتلك مخزون بضائع ملموس أو مستودعات، لذلك هذا التقرير مخصص حصراً للأنشطة التجارية للمنتجات."
+                    if self.language == "ar"
+                    else "💡 **Note:** This dataset represents a Services & Consulting activity. "
+                    "Inventory analytics do not apply to service companies."
+                )
+                return
 
             # Execute Selected Report
             report_result = self._execute_report(ctx, selected_report_id)

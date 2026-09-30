@@ -101,6 +101,7 @@ class DatasetContext:
         dayfirst: bool = False,
         send_sample_rows: bool = False,
         dataset_id: str | None = None,
+        business_type: str = "products",
     ) -> None:
         """Initialise the context.
 
@@ -111,6 +112,7 @@ class DatasetContext:
             dayfirst: Interpret ambiguous dates day-first.
             send_sample_rows: Allow raw row exposure to the LLM/UI.
             dataset_id: Optional ID of the dataset record.
+            business_type: Business activity type ("products" or "services").
         """
         self.sheets = sheets
         self.mapping = mapping
@@ -118,8 +120,14 @@ class DatasetContext:
         self.dayfirst = dayfirst
         self.send_sample_rows = send_sample_rows
         self.dataset_id = dataset_id
+        self.business_type = business_type
         # Reverse mapping: column_name → role (first-wins on collision)
         self._col_to_role: dict[str, str] = {v: k for k, v in mapping.items()}
+
+    @property
+    def is_services(self) -> bool:
+        """Return True if this dataset belongs to a services/consulting business."""
+        return self.business_type == "services"
 
     def get_sheet(self, sheet_name: str) -> pd.DataFrame:
         """Return the DataFrame for *sheet_name*, or raise :class:`EngineError`.

@@ -136,3 +136,40 @@ def test_run_report_dispatcher(sales_context: DatasetContext) -> None:
     res = run_report(sales_context, inp)
     assert res.report_id == "sales_overview"
     assert res.error is None
+
+
+def test_top_services_report() -> None:
+    """Services business model adapts Top Products into Top Services."""
+    df_services = pd.DataFrame({
+        "service_name": ["Legal Consultation", "Tax Advisory", "Contract Review"],
+        "fees": [15000.0, 8000.0, 4500.0],
+    })
+    ctx = DatasetContext(
+        sheets={"Services": df_services},
+        mapping={"product": "service_name", "revenue": "fees"},
+        quality_summary={"Services": QualitySummary(sheet_name="Services", row_count=len(df_services))},
+        business_type="services",
+    )
+    res = top_products(ctx)
+    assert res.report_id == "top_products"
+    assert not res.missing_roles
+    assert any(k.label == "Total Services" for k in res.kpis)
+    assert any(k.label == "Top Service" for k in res.kpis)
+    assert "top_products" in res.tables
+    assert res.tables["top_products"].data[0]["product"] == "Legal Consultation"
+
+
+def test_slow_inventory_disabled_for_services() -> None:
+    """Slow moving inventory report cleanly disables for services business model."""
+    df_services = pd.DataFrame({"service_name": ["Consulting"], "fees": [1000.0]})
+    ctx = DatasetContext(
+        sheets={"Services": df_services},
+        mapping={"product": "service_name", "revenue": "fees"},
+        quality_summary={"Services": QualitySummary(sheet_name="Services", row_count=len(df_services))},
+        business_type="services",
+    )
+    res = slow_inventory(ctx)
+    assert res.report_id == "slow_inventory"
+    assert len(res.warnings) > 0
+    assert "خدمية" in res.warnings[0]
+

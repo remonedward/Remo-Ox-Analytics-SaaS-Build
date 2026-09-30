@@ -47,6 +47,7 @@ class DatasetRecord:
     mapping: dict[str, str]
     quality: dict[str, Any]
     dayfirst: bool = False
+    business_type: str = "products"  # "products" | "services"
     created_at: str | None = None
     expires_at: str | None = None
 
@@ -97,6 +98,35 @@ class DatabaseDump:
     content_type: str  # "application/x-sqlite3" or "application/json" or "application/sql"
     data: bytes
     size_bytes: int
+    created_at: str
+
+
+@dataclass
+class UserTokenUsage:
+    """Aggregated token consumption for a user over a date range."""
+
+    user_id: str
+    email: str
+    plan_id: str
+    total_messages: int
+    tokens_in: int
+    tokens_out: int
+    total_tokens: int
+    last_active: str | None = None
+
+
+@dataclass
+class TokenMessageLog:
+    """Detailed per-message/event token log record."""
+
+    id: str
+    user_id: str
+    email: str
+    kind: str
+    tokens_in: int
+    tokens_out: int
+    total_tokens: int
+    model: str | None
     created_at: str
 
 
@@ -283,3 +313,22 @@ class StorageBackend(ABC):
         Returns:
             DatabaseDump containing bytes, filename, and mime type.
         """
+
+    @abstractmethod
+    def get_users_token_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+    ) -> list[UserTokenUsage]:
+        """Admin-only: aggregate token consumption per user within a date range."""
+
+    @abstractmethod
+    def get_token_usage_events(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+        limit: int = 200,
+    ) -> list[TokenMessageLog]:
+        """Admin-only: retrieve individual token usage events within a date range."""

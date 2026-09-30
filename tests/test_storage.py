@@ -191,3 +191,67 @@ def test_get_storage_backend_factory(test_settings: Settings) -> None:
     """Factory returns LocalBackend when in local mode."""
     backend = get_storage_backend(test_settings, force_new=True)
     assert isinstance(backend, LocalBackend)
+
+
+def test_dataset_business_type(temp_backend: LocalBackend) -> None:
+    """Dataset record preserves business_type ('products' vs 'services')."""
+    _, user, _ = temp_backend.sign_up("biz_user@example.com", "pass123")
+    ds = DatasetRecord(
+        id="ds_service_1",
+        user_id=user.id,
+        original_name="consulting.xlsx",
+        display_name="Consulting Services",
+        storage_path=f"{user.id}/ds_service_1/consulting.xlsx",
+        file_size_bytes=1000,
+        sheet_names=["Services"],
+        row_counts={"Services": 15},
+        mapping={},
+        quality={},
+        business_type="services",
+    )
+    temp_backend.create_dataset_record(ds)
+
+    retrieved = temp_backend.get_dataset("ds_service_1", user.id)
+    assert retrieved is not None
+    assert retrieved.business_type == "services"
+
+    temp_backend.update_dataset("ds_service_1", user.id, {"business_type": "products"})
+    updated = temp_backend.get_dataset("ds_service_1", user.id)
+    assert updated is not None
+    assert updated.business_type == "products"
+
+
+def test_token_usage_analytics_summary_and_events(temp_backend: LocalBackend) -> None:
+    """Administrator can query token usage summaries and events with date filters."""
+    _, user1, _ = temp_backend.sign_up("user1@company.com", "pass123")
+    _, user2, _ = temp_backend.sign_up("user2@company.com", "pass456")
+
+    temp_backend.record_usage(user1.id, "ai_message", tokens_in=100, tokens_out=200, model="gemini-3.7-flash")
+    temp_backend.record_usage(user1.id, "ai_message", tokens_in=50, tokens_out=150, model="gemini-3.7-flash")
+    temp_backend.record_usage(user2.id, "ai_message", tokens_in=80, tokens_out=120, model="gemini-2.5-flash")
+
+    # Overall summary
+    summary_all = temp_backend.get_users_token_summary()
+    assert len(summary_all) >= 2
+    u1_stat = next(s for s in summary_all if s.user_id == user1.id)
+    assert u1_stat.total_messages == 2
+    assert u1_stat.tokens_in == 150
+    assert u1_stat.tokens_out == 350
+    assert u1_stat.total_tokens == 500
+
+    u2_stat = next(s for s in summary_all if s.user_id == user2.id)
+    assert u2_stat.total_messages == 1
+    assert u2_stat.tokens_in == 80
+    assert u2_stat.tokens_out == 120
+    assert u2_stat.total_tokens == 200
+
+    # User filter
+    summary_u1 = temp_backend.get_users_token_summary(user_id=user1.id)
+    assert len(summary_u1) == 1
+    assert summary_u1[0].user_id == user1.id
+
+    # Usage events detailed log
+    events = temp_backend.get_token_usage_events()
+    assert len(events) >= 3
+    assert events[0].tokens_in > 0
+    assert events[0].model is not None

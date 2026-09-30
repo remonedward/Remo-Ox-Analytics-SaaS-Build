@@ -26,7 +26,9 @@ from storage.base import (
     MessageRecord,
     PlanRecord,
     StorageBackend,
+    TokenMessageLog,
     UserSession,
+    UserTokenUsage,
 )
 
 logger = get_logger(__name__)
@@ -202,6 +204,7 @@ class SupabaseBackend(StorageBackend):
             "mapping": record.mapping,
             "quality": record.quality,
             "dayfirst": record.dayfirst,
+            "business_type": getattr(record, "business_type", "products") or "products",
             "created_at": record.created_at or datetime.now(UTC).isoformat(),
         }
         client.table("datasets").insert(payload).execute()
@@ -225,6 +228,7 @@ class SupabaseBackend(StorageBackend):
             mapping=row.get("mapping", {}),
             quality=row.get("quality", {}),
             dayfirst=bool(row.get("dayfirst", False)),
+            business_type=row.get("business_type", "products"),
             created_at=row.get("created_at"),
             expires_at=row.get("expires_at"),
         )
@@ -247,6 +251,7 @@ class SupabaseBackend(StorageBackend):
                     mapping=row.get("mapping", {}),
                     quality=row.get("quality", {}),
                     dayfirst=bool(row.get("dayfirst", False)),
+                    business_type=row.get("business_type", "products"),
                     created_at=row.get("created_at"),
                     expires_at=row.get("expires_at"),
                 )
@@ -558,3 +563,118 @@ class SupabaseBackend(StorageBackend):
             size_bytes=len(raw_json),
             created_at=dump_data["metadata"]["exported_at"],
         )
+
+    def get_users_token_summary(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+    ) -> list[UserTokenUsage]:
+        """Admin-only: aggregate token consumption per user within a date range."""
+        client = self._get_active_client(require_admin=True)
+
+        profiles_query = client.table("profiles").select("id, email, plan_id")
+        if user_id:
+            profiles_query = profiles_query.eq("id", user_id)
+        profiles_res = profiles_query.execute()
+        profiles_data = profiles_res.data or []
+
+        usage_query = client.table("usage_events").select("user_id, tokens_in, tokens_out, created_at").eq("kind", "ai_message")
+        if start_date:
+            sd = start_date if "T" in start_date else f"{start_date}T00:00:00"
+            usage_query = usage_query.gte("created_at", sd)
+        if end_date:
+            ed = end_date if "T" in end_date else f"{end_date}T23:59:59"
+            usage_query = usage_query.lte("created_at", ed)
+        if user_id:
+            usage_query = usage_query.eq("user_id", user_id)
+
+        usage_res = usage_query.execute()
+        usage_rows = usage_res.data or []
+
+        user_stats: dict[str, dict[str, Any]] = {}
+        for row in usage_rows:
+            uid = str(row.get("user_id"))
+            tin = int(row.get("tokens_in") or 0)
+            tout = int(row.get("tokens_out") or 0)
+            created = row.get("created_at")
+
+            if uid not in user_stats:
+                user_stats[uid] = {
+                    "count": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "last_active": created,
+                }
+            user_stats[uid]["count"] += 1
+            user_stats[uid]["tokens_in"] += tin
+            user_stats[uid]["tokens_out"] += tout
+            if created and (not user_stats[uid]["last_active"] or created > user_stats[uid]["last_active"]):
+                user_stats[uid]["last_active"] = created
+
+        summaries = []
+        for p in profiles_data:
+            pid = str(p["id"])
+            st = user_stats.get(pid, {"count": 0, "tokens_in": 0, "tokens_out": 0, "last_active": None})
+            summaries.append(
+                UserTokenUsage(
+                    user_id=pid,
+                    email=p.get("email", ""),
+                    plan_id=p.get("plan_id", "trial"),
+                    total_messages=st["count"],
+                    tokens_in=st["tokens_in"],
+                    tokens_out=st["tokens_out"],
+                    total_tokens=st["tokens_in"] + st["tokens_out"],
+                    last_active=st["last_active"],
+                )
+            )
+
+        summaries.sort(key=lambda x: (x.total_tokens, x.total_messages), reverse=True)
+        return summaries
+
+    def get_token_usage_events(
+        self,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        user_id: str | None = None,
+        limit: int = 200,
+    ) -> list[TokenMessageLog]:
+        """Admin-only: retrieve individual token usage events within a date range."""
+        client = self._get_active_client(require_admin=True)
+
+        q = client.table("usage_events").select("*").eq("kind", "ai_message")
+        if start_date:
+            sd = start_date if "T" in start_date else f"{start_date}T00:00:00"
+            q = q.gte("created_at", sd)
+        if end_date:
+            ed = end_date if "T" in end_date else f"{end_date}T23:59:59"
+            q = q.lte("created_at", ed)
+        if user_id:
+            q = q.eq("user_id", user_id)
+
+        q = q.order("created_at", desc=True).limit(limit)
+        events_res = q.execute()
+        events_rows = events_res.data or []
+
+        profiles_res = client.table("profiles").select("id, email").execute()
+        email_map = {str(p["id"]): p.get("email", "") for p in (profiles_res.data or [])}
+
+        logs = []
+        for r in events_rows:
+            uid = str(r.get("user_id"))
+            tin = int(r.get("tokens_in") or 0)
+            tout = int(r.get("tokens_out") or 0)
+            logs.append(
+                TokenMessageLog(
+                    id=str(r.get("id")),
+                    user_id=uid,
+                    email=email_map.get(uid, ""),
+                    kind=r.get("kind", "ai_message"),
+                    tokens_in=tin,
+                    tokens_out=tout,
+                    total_tokens=tin + tout,
+                    model=r.get("model"),
+                    created_at=r.get("created_at", ""),
+                )
+            )
+        return logs

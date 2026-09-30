@@ -7,6 +7,7 @@ storage persistence, and DatasetContext construction for analytics.
 """
 
 import uuid
+from typing import Any
 
 import pandas as pd
 
@@ -53,6 +54,7 @@ class DatasetService:
         filename: str,
         file_bytes: bytes,
         dayfirst: bool = False,
+        business_type: str = "products",
     ) -> tuple[bool, DatasetRecord | None, str]:
         """Ingest, clean, map, evaluate quality, and store an uploaded dataset.
 
@@ -119,6 +121,7 @@ class DatasetService:
                 mapping=role_map,
                 quality=quality_rep.model_dump(mode="json"),
                 dayfirst=dayfirst,
+                business_type=business_type,
             )
 
             self._backend.create_dataset_record(record)
@@ -130,6 +133,7 @@ class DatasetService:
                 quality_report=quality_rep,
                 dayfirst=dayfirst,
                 dataset_id=dataset_id,
+                business_type=business_type,
             )
             self._context_cache[(user.id, dataset_id)] = context
 
@@ -158,13 +162,18 @@ class DatasetService:
         dataset_id: str,
         user_id: str,
         new_mapping: dict[str, str],
+        business_type: str | None = None,
     ) -> bool:
-        """Update confirmed column mapping for a dataset."""
+        """Update confirmed column mapping and optional business_type for a dataset."""
         record = self.get_dataset(dataset_id, user_id)
         if not record:
             return False
 
-        ok = self._backend.update_dataset(dataset_id, user_id, {"mapping": new_mapping})
+        updates: dict[str, Any] = {"mapping": new_mapping}
+        if business_type:
+            updates["business_type"] = business_type
+
+        ok = self._backend.update_dataset(dataset_id, user_id, updates)
         if ok:
             # Invalidate context cache so it reloads with new mapping
             self._context_cache.pop((user_id, dataset_id), None)
@@ -192,12 +201,15 @@ class DatasetService:
                 else generate_quality_report(ingest_res.sheets, record.mapping)
             )
 
+            biz_type = getattr(record, "business_type", "products") or "products"
+
             context = self._create_context(
                 sheets=ingest_res.sheets,
                 mapping=record.mapping,
                 quality_report=quality_report,
                 dayfirst=record.dayfirst,
                 dataset_id=dataset_id,
+                business_type=biz_type,
             )
             self._context_cache[cache_key] = context
             return context
@@ -212,6 +224,7 @@ class DatasetService:
         quality_report: QualityReport,
         dayfirst: bool,
         dataset_id: str | None = None,
+        business_type: str = "products",
     ) -> DatasetContext:
         """Construct a DatasetContext instance with derived columns applied."""
         mapped_sheets = {name: apply_mapping(df, mapping) for name, df in sheets.items()}
@@ -224,4 +237,5 @@ class DatasetService:
             dayfirst=dayfirst,
             send_sample_rows=self._settings.send_sample_rows_to_llm,
             dataset_id=dataset_id,
+            business_type=business_type,
         )

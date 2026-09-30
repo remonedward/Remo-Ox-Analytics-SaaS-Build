@@ -54,3 +54,15 @@ def test_apply_mapping_computes_derived_revenue() -> None:
     mapping = {"quantity": "qty", "unit_price": "price"}
     mapped_df = apply_mapping(df, mapping)
     assert "_derived_revenue" in mapped_df.columns or "revenue" in mapped_df.columns
+
+
+def test_auto_map_roles_services() -> None:
+    """auto_map_roles identifies service-specific column names."""
+    cols = ["اسم الخدمة", "ساعات العمل", "سعر الساعة", "أتعاب الاستشارة"]
+    res = auto_map_roles(cols)
+    mapping = {m.role: m.column for m in res.confirmed}
+    assert mapping.get("product") == "اسم الخدمة"
+    assert mapping.get("quantity") == "ساعات العمل"
+    assert mapping.get("unit_price") == "سعر الساعة"
+    assert mapping.get("revenue") == "أتعاب الاستشارة"
+
