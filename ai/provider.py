@@ -141,25 +141,37 @@ class LLMProvider:
         fallback_model = self.settings.llm_fallback_model.strip()
         fallback_key = self.settings.llm_fallback_api_key.get_secret_value().strip() or primary_key
 
-        # If user did not configure an explicit fallback, provide an intelligent automatic fallback
-        # between current Gemini models (e.g. gemini-3.7-flash -> gemini-3.8-flash or vice versa)
-        if not fallback_model and "gemini" in primary_model.lower():
-            if "3.8" in primary_model:
-                fallback_model = "gemini/gemini-3.7-flash"
-            else:
-                fallback_model = "gemini/gemini-3.8-flash"
-            fallback_key = primary_key
-
+        fallback_chain: list[tuple[str, str]] = []
         if fallback_model and fallback_model != primary_model:
+            fallback_chain.append((fallback_model, fallback_key))
+
+        # Automatic Gemini fallback chain for resilience against 429 quota exhaustion and 503 high demand
+        if "gemini" in primary_model.lower():
+            # gemini-3.5-flash-lite: ultra-fast, 1M context, 65k output, high RPM, robust availability
+            # gemini-3.5-flash: high intelligence, balanced
+            # gemini-3.8-flash: next-generation high throughput
+            # gemini-3.7-flash: reasoning flagship
+            gemini_priority = [
+                "gemini/gemini-3.5-flash-lite",
+                "gemini/gemini-3.5-flash",
+                "gemini/gemini-3.8-flash",
+                "gemini/gemini-3.7-flash",
+            ]
+            for gm in gemini_priority:
+                if gm != primary_model and (gm, primary_key) not in fallback_chain:
+                    fallback_chain.append((gm, primary_key))
+
+        last_err_res = res
+        for f_model, f_key in fallback_chain:
             logger.warning(
                 "Primary model %s failed (%s). Attempting fallback model %s",
                 primary_model,
                 res.error,
-                fallback_model,
+                f_model,
             )
             fallback_res = self._execute_call(
-                model=fallback_model,
-                api_key=fallback_key,
+                model=f_model,
+                api_key=f_key,
                 api_base=None,
                 messages=messages,
                 tools=tools,
@@ -167,9 +179,9 @@ class LLMProvider:
             )
             if not fallback_res.error:
                 return fallback_res
-            return fallback_res
+            last_err_res = fallback_res
 
-        return res
+        return last_err_res
 
     def _execute_call(
         self,

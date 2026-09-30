@@ -202,8 +202,8 @@ def test_gemini_3_automatic_fallback():
     ) as mock_comp:
         res = provider.call(messages=[{"role": "user", "content": "Hello"}])
         assert mock_comp.call_count == 2
-        # Second call used auto fallback model gemini/gemini-3.8-flash
-        assert res.model == "gemini/gemini-3.8-flash"
+        # Second call used auto fallback model gemini/gemini-3.5-flash-lite
+        assert res.model == "gemini/gemini-3.5-flash-lite"
         assert res.content == "Auto fallback response"
 
 
