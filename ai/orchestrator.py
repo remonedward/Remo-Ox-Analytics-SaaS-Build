@@ -203,12 +203,42 @@ class AIOrchestrator:
                 final_text = resp.content or ""
                 break
 
-        if not final_text and collected_tool_results:
-            final_text = (
-                "تم تنفيذ الحسابات والتحليلات المطلوبة بنجاح بناءً على بياناتك."
+        # If tools were executed but no final textual summary was produced by the loop,
+        # perform an explicit synthesis turn with tools=None to force the model to write the text
+        if not final_text and collected_tool_calls:
+            synthesis_prompt = (
+                "بناءً على نتائج الأدوات والبيانات المستخرجة أعلاه، اكتب الآن إجابتك التحليلية الكاملة والمفصلة باللغة العربية. اذكر أسماء العناصر والأرقام والنسب والترتيب بوضوح ونسقها بشكل جميل ومنظم."
                 if language == "ar"
-                else "The requested calculations and analytics have been successfully computed from your data."
+                else "Based on all tool outputs computed above from the data, write your complete and detailed analytical answer now, citing specific names, values, percentages, and rankings in a clear structured format."
             )
+            messages.append({"role": "user", "content": synthesis_prompt})
+            final_resp = self.provider.call(messages=messages, tools=None)
+            total_prompt_tokens += getattr(final_resp, "prompt_tokens", 0) or 0
+            total_completion_tokens += getattr(final_resp, "completion_tokens", 0) or 0
+            if final_resp.model:
+                last_model = final_resp.model
+            final_text = final_resp.content or ""
+
+        # Fallback: if final_text is still empty, format the first collected tool result into a markdown table
+        if not final_text and collected_tool_results:
+            first_res = collected_tool_results[0]
+            if first_res.data:
+                headers = list(first_res.data[0].keys())
+                rows_md = ["| " + " | ".join(headers) + " |", "| " + " | ".join(["---"] * len(headers)) + " |"]
+                for item in first_res.data[:15]:
+                    rows_md.append("| " + " | ".join(str(item.get(h, "")) for h in headers) + " |")
+                table_md = "\n".join(rows_md)
+                final_text = (
+                    "إليك النتائج المستخرجة مباشرة من بياناتك:\n\n"
+                    if language == "ar"
+                    else "Here are the results extracted directly from your data:\n\n"
+                ) + table_md
+            else:
+                final_text = (
+                    "تم تنفيذ الحسابات والتحليلات المطلوبة بنجاح بناءً على بياناتك."
+                    if language == "ar"
+                    else "The requested calculations and analytics have been successfully computed from your data."
+                )
 
         # 7. Record quota usage & token metering in database
         self.backend.record_usage(
