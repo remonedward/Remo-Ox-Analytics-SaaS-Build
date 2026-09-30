@@ -136,8 +136,8 @@ CREATE TABLE IF NOT EXISTS usage_events (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_usage_user_kind_month
-    ON usage_events(user_id, kind, date_trunc('month', created_at));
+CREATE INDEX IF NOT EXISTS idx_usage_user_kind_created
+    ON usage_events(user_id, kind, created_at);
 
 -- ============================================================
 -- 7. exports (download history for PDFs and chart PNGs)
@@ -174,26 +174,31 @@ CREATE INDEX IF NOT EXISTS idx_app_errors_created ON app_errors(created_at DESC)
 
 -- plans: authenticated users can read plans
 ALTER TABLE plans ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS plans_read ON plans;
 CREATE POLICY plans_read ON plans
     FOR SELECT USING (auth.role() = 'authenticated');
 
 -- profiles: users can view and update only their own profile
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS profiles_self ON profiles;
 CREATE POLICY profiles_self ON profiles
     FOR ALL USING (id = auth.uid());
 
 -- datasets: users own their datasets
 ALTER TABLE datasets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS datasets_owner ON datasets;
 CREATE POLICY datasets_owner ON datasets
     FOR ALL USING (user_id = auth.uid());
 
 -- conversations: users own their conversations
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS conversations_owner ON conversations;
 CREATE POLICY conversations_owner ON conversations
     FOR ALL USING (user_id = auth.uid());
 
 -- messages: users read and write messages in their own conversations
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS messages_owner ON messages;
 CREATE POLICY messages_owner ON messages
     FOR ALL USING (
         conversation_id IN (
@@ -203,18 +208,22 @@ CREATE POLICY messages_owner ON messages
 
 -- usage_events: users can inspect their own usage
 ALTER TABLE usage_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS usage_events_owner ON usage_events;
 CREATE POLICY usage_events_owner ON usage_events
     FOR ALL USING (user_id = auth.uid());
 
 -- exports: users own their generated exports
 ALTER TABLE exports ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS exports_owner ON exports;
 CREATE POLICY exports_owner ON exports
     FOR ALL USING (user_id = auth.uid());
 
 -- app_errors: users can INSERT error records, but cannot SELECT
 ALTER TABLE app_errors ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS app_errors_no_user_read ON app_errors;
 CREATE POLICY app_errors_no_user_read ON app_errors
     FOR SELECT USING (FALSE);          -- Only service_role can select
+DROP POLICY IF EXISTS app_errors_insert ON app_errors;
 CREATE POLICY app_errors_insert ON app_errors
     FOR INSERT WITH CHECK (TRUE);      -- Authenticated or anon can log an error
 
@@ -230,21 +239,27 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- datasets bucket RLS
+DROP POLICY IF EXISTS "datasets_owner_select" ON storage.objects;
 CREATE POLICY "datasets_owner_select" ON storage.objects FOR SELECT
     USING (bucket_id = 'datasets' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
 
+DROP POLICY IF EXISTS "datasets_owner_insert" ON storage.objects;
 CREATE POLICY "datasets_owner_insert" ON storage.objects FOR INSERT
     WITH CHECK (bucket_id = 'datasets' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
 
+DROP POLICY IF EXISTS "datasets_owner_delete" ON storage.objects;
 CREATE POLICY "datasets_owner_delete" ON storage.objects FOR DELETE
     USING (bucket_id = 'datasets' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
 
 -- exports bucket RLS
+DROP POLICY IF EXISTS "exports_owner_select" ON storage.objects;
 CREATE POLICY "exports_owner_select" ON storage.objects FOR SELECT
     USING (bucket_id = 'exports' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
 
+DROP POLICY IF EXISTS "exports_owner_insert" ON storage.objects;
 CREATE POLICY "exports_owner_insert" ON storage.objects FOR INSERT
     WITH CHECK (bucket_id = 'exports' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
 
+DROP POLICY IF EXISTS "exports_owner_delete" ON storage.objects;
 CREATE POLICY "exports_owner_delete" ON storage.objects FOR DELETE
     USING (bucket_id = 'exports' AND (storage.foldername(name))[1] = auth.uid()::TEXT);
